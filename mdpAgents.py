@@ -27,7 +27,6 @@
 
 # The agent here is was written by Simon Parsons, based on the code in
 # pacmanAgents.py
-
 from pacman import Directions
 from game import Agent
 import api
@@ -35,18 +34,19 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.75
+GAMMA_VALUE = 0.8
 CONVERGENCE_ITERATIONS = 50
 
 #reward values
 WALL_REWARD = 0
-FOOD_REWARD = 3
-GHOST_REWARD = -15
+FOOD_REWARD = 8
+GHOST_REWARD = -20
 VULNERABLE_GHOST_REWARD = 4
-EMPTY_REWARD = -0.35
+EMPTY_REWARD = -1
 CAPSULES_REWARD = 3
 
-GHOST_RADIUS = 3
+DISTANCE_MULTIPLIER = 2.2
+GHOST_RADIUS = 2.1
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
 NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
@@ -85,7 +85,7 @@ class MDPAgent(Agent):
 
         self.initializeMapStates(state, self.game_state)
         #get height of maze  
-    
+ 
     def getLayoutHeight(self, corners):
         map_y = -1
         for i in range(len(corners)):
@@ -100,7 +100,8 @@ class MDPAgent(Agent):
             if corners[i][0] > map_x:
                 map_x = corners[i][0]
         return map_x + 1
-    
+
+  
     def initializeMapStates(self, state, game_state):
         #generate imp lists     
         walls = api.walls(state)
@@ -121,11 +122,11 @@ class MDPAgent(Agent):
                     game_state[col][row] = Coordinates(False, FOOD_REWARD)
                 else:
                     game_state[col][row] = Coordinates(False, EMPTY_REWARD)
-    
+ 
     # This is what gets run in between multiple games
     def final(self, state):
         print "Looks like the game just ended!"
-
+ 
     #update the map with new values of rewards and symbols
     def updateRewards(self, state):
         #generate imp lists     
@@ -133,7 +134,7 @@ class MDPAgent(Agent):
         ghost_edible = api.ghostStates(state)
         capsules = api.capsules(state)
         foods = api.food(state)
-        close_to_ghost = self.ghostRadius(state, 3)
+        close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
         
         for row in range(self.map_y):
             for col in range(self.map_x):
@@ -147,30 +148,29 @@ class MDPAgent(Agent):
                 else:
                     self.game_state[col][row].reward = EMPTY_REWARD
                 
-                close_to_ghost = self.ghostRadius(state, 3)    
                 if((col, row) in close_to_ghost[0] and (col, row) not in walls):
                     index = close_to_ghost[0].index((col, row))
-                    manhatten_multiplier = close_to_ghost[1][index]
+                    manhatten_distance = close_to_ghost[1][index]
                     if len(ghost_edible) < 2:
-                        self.game_state[col][row].reward = GHOST_REWARD + 1.5*manhatten_multiplier
+                        self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
                     elif ghost_edible[0][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - 1.5*manhatten_multiplier
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
                     elif ghost_edible[1][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - 1.5*manhatten_multiplier
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
                     else:
-                        self.game_state[col][row].reward = GHOST_REWARD + 1.5*manhatten_multiplier
+                        self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
                     
         # for row in range(self.map_y):
         #     row_values = []
         #     for col in range(self.map_x):
         #         row_values.append(self.game_state[col][row].reward)
         #     print(row_values)
-        
+     
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
-        grid = [(i,j) for i in range(self.map_y) for j in range(self.map_x)]
+        grid = [(i,j) for j in range(self.map_y) for i in range(self.map_x)]
         ghosts = api.ghosts(state)
         withinLimit = set()
         
@@ -180,8 +180,9 @@ class MDPAgent(Agent):
                 if manhattanDistance <= limit:
                     withinLimit.add((grid[i],manhattanDistance))
 
-        return list(map(list, zip(*withinLimit)))
-    
+        dual_list = list(map(list, zip(*withinLimit)))
+        return dual_list
+ 
     #method for calculating updating all the utilities and policies in self.game_state        
     def calculateUtilitiesAndPolicies(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
@@ -211,7 +212,7 @@ class MDPAgent(Agent):
                #if current pos not a wall, update policy of pos
                if (not (self.game_state[col][row].wall_bool == True)):        
                    self.updatePolicy(col, row, directions_list)           
-
+ 
     #method to update policy in self.game_state
     def updatePolicy(self, col, row, directions_list):
         #calculate new policy to be used in the next iteration for self.game_state
@@ -226,7 +227,7 @@ class MDPAgent(Agent):
         
         #update policy in self.game_state 
         self.game_state[col][row].policy = directions_list[new_policy_index]
-
+ 
     #calculate and set utilities accoring to current policy in self.game_state
     def getNewUtility(self, col, row):
         if (self.game_state[col][row].policy == Directions.NORTH):
@@ -239,11 +240,11 @@ class MDPAgent(Agent):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1])
         else:
             return self.calculateUtility(self.game_state[col][row], self.game_state[col][row], self.game_state[col][row], self.game_state[col][row])
-    
+ 
     #method to calculate maximum index of list
     def findMaxIndex(self, list):
         return list.index(max(list))
-
+ 
     #method to calculate utility of moving from state s to moving to s'
     def calculateUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
         if intended_move.wall_bool == True:
@@ -258,7 +259,7 @@ class MDPAgent(Agent):
         utility = current_pos.reward + GAMMA_VALUE * (DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + 
                                                         (NON_DETERMINISTIC_ACTION)*alt_move_two.utility)
         return utility
-
+ 
     #method for calculating expected utility of moving from state s to s'
     def calculateExpectedUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
         if intended_move.wall_bool == True:
@@ -272,7 +273,7 @@ class MDPAgent(Agent):
 
         exp_utility = DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + (NON_DETERMINISTIC_ACTION)*alt_move_two.utility
         return exp_utility
-
+ 
     def getAction(self, state):
         # update map 
         self.updateRewards(state)
