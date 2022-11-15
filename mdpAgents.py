@@ -145,12 +145,24 @@ class MDPAgent(Agent):
                     self.game_state[col][row].reward = CAPSULES_REWARD
                 elif((col, row) in foods):
                     self.game_state[col][row].reward = FOOD_REWARD
-                elif ((col, row) in close_to_ghost and ((col, row),1) in ghost_edible and (col, row) not in walls):
-                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
-                elif ((col, row) in close_to_ghost and ((col, row),0) in ghost_edible and (col, row) not in walls):
-                    self.game_state[col][row].reward = GHOST_REWARD 
                 else:
                     self.game_state[col][row].reward = EMPTY_REWARD
+                if((col, row) in close_to_ghost and (col, row) not in walls):
+                    print(ghost_edible[0][1],ghost_edible[1][1])
+                    if len(ghost_edible) < 2:
+                        self.game_state[col][row].reward = GHOST_REWARD 
+                    elif ghost_edible[0][1] == 1:
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
+                    elif ghost_edible[1][1] == 1:
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
+                    else:
+                        self.game_state[col][row].reward = GHOST_REWARD 
+                    
+        for row in range(self.map_y):
+            row_values = []
+            for col in range(self.map_x):
+                row_values.append(self.game_state[col][row].reward)
+            print(row_values)
         
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
