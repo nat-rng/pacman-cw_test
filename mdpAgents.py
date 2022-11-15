@@ -36,18 +36,19 @@ import game
 import util
 
 GAMMA_VALUE = 0.9
+CONVERGENCE_ITERATIONS = 30
 
 #reward values
 WALL_REWARD = 0
 FOOD_REWARD = 15
-GHOST_REWARD = -100
+GHOST_REWARD = -80
 VULNERABLE_GHOST_REWARD = 50
 EMPTYSPACE_REWARD = -50
 CAPSULES_REWARD = 10
 
 #nondeterministic probabilities
-DETERMINISTICACTION = api.nonDeterministic
-NONDETERMINISTICACTION = (1-DETERMINISTICACTION)/2
+DETERMINISTIC_ACTION = api.nonDeterministic
+NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
 
 
 class Coordinates():
@@ -81,9 +82,25 @@ class MDPAgent(Agent):
         #make 2d array size of map_x and map_y
         self.game_state = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
-        self.initializeMapMatrix(state, self.game_state)
+        self.initializeMapStates(state, self.game_state)
+        #get height of maze  
     
-    def initializeMapMatrix(self, state, game_state):
+    def getLayoutHeight(self, corners):
+        map_y = -1
+        for i in range(len(corners)):
+            if corners[i][1] > map_y:
+                map_y = corners[i][1]
+        return map_y + 1
+
+    #get width of maze
+    def getLayoutWidth(self, corners):
+        map_x = -1
+        for i in range(len(corners)):
+            if corners[i][0] > map_x:
+                map_x = corners[i][0]
+        return map_x + 1
+    
+    def initializeMapStates(self, state, game_state):
         #generate imp lists     
         walls = api.walls(state)
         ghosts = api.ghosts(state)
@@ -103,22 +120,6 @@ class MDPAgent(Agent):
                     game_state[col][row] = Coordinates(False, FOOD_REWARD)
                 else:
                     game_state[col][row] = Coordinates(False, EMPTYSPACE_REWARD)
-    
-    #get height of maze  
-    def getLayoutHeight(self, corners):
-        map_y = -1
-        for i in range(len(corners)):
-            if corners[i][1] > map_y:
-                map_y = corners[i][1]
-        return map_y + 1
-
-    #get width of maze
-    def getLayoutWidth(self, corners):
-        map_x = -1
-        for i in range(len(corners)):
-            if corners[i][0] > map_x:
-                map_x = corners[i][0]
-        return map_x + 1
     
     # This is what gets run in between multiple games
     def final(self, state):
@@ -161,13 +162,13 @@ class MDPAgent(Agent):
     #method for calculating updating all the utilities and policies in self.game_state        
     def calculateUtilitiesAndPolicies(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
-        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
+        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST]
         
         #make copy of utilites
         temp_map_utilities = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
         #loop till near convergence 
-        for i in range(50):
+        for _ in range(CONVERGENCE_ITERATIONS):
             
             #calculate new utilities and save in temporary 2d array
             for row in range(self.map_y):
@@ -221,32 +222,32 @@ class MDPAgent(Agent):
         return list.index(max(list))
 
     #method to calculate utility of moving from state s to moving to s'
-    def calculateUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
-        if map_coordinate_forward.wall_bool == True:
-            map_coordinate_forward = map_coordinate
+    def calculateUtility(self, coordinates, intended_move, alt_move_one, alt_move_two):
+        if intended_move.wall_bool == True:
+            intended_move = coordinates
 
-        if map_coordinate_left.wall_bool == True:
-            map_coordinate_left = map_coordinate
+        if alt_move_one.wall_bool == True:
+            alt_move_one = coordinates
 
-        if map_coordinate_right.wall_bool == True:
-            map_coordinate_right = map_coordinate
+        if alt_move_two.wall_bool == True:
+            alt_move_two = coordinates
 
-        utility = map_coordinate.reward + GAMMA_VALUE * (DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + 
-                                                        (NONDETERMINISTICACTION)*map_coordinate_right.utility)
+        utility = coordinates.reward + GAMMA_VALUE * (DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + 
+                                                        (NON_DETERMINISTIC_ACTION)*alt_move_two.utility)
         return utility
 
     #method for calculating expected utility of moving from state s to s'
-    def calculateExpectedUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
-        if map_coordinate_forward.wall_bool == True:
-            map_coordinate_forward = map_coordinate
+    def calculateExpectedUtility(self, coordinates, intended_move, alt_move_one, alt_move_two):
+        if intended_move.wall_bool == True:
+            intended_move = coordinates
 
-        if map_coordinate_left.wall_bool == True:
-            map_coordinate_left = map_coordinate
+        if alt_move_one.wall_bool == True:
+            alt_move_one = coordinates
 
-        if map_coordinate_right.wall_bool == True:
-            map_coordinate_right = map_coordinate
+        if alt_move_two.wall_bool == True:
+            alt_move_two = coordinates
 
-        exp_utility = DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + (NONDETERMINISTICACTION)*map_coordinate_right.utility
+        exp_utility = DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + (NON_DETERMINISTIC_ACTION)*alt_move_two.utility
         return exp_utility
 
     def getAction(self, state):
