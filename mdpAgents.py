@@ -41,9 +41,9 @@ GAMMA_VALUE = 0.8
 WALL_REWARD = 0
 FOOD_REWARD = 3
 GHOST_REWARD = -10
-VULNERABLE_GHOST_REWARD = 5
+VULNERABLE_GHOST_REWARD = 3
 EMPTYSPACE_REWARD = -5
-CAPSULES_REWARD = 1
+CAPSULES_REWARD = 3
 
 #nondeterministic probabilities
 DETERMINISTICACTION = api.nonDeterministic
@@ -105,7 +105,7 @@ class MDPAgent(Agent):
         #generate lists of elements specified
         walls = api.walls(state)
         ghosts = api.ghosts(state)
-        ghost_edible = api.ghostStates(state)[1]
+        ghost_edible = api.ghostStates(state)
         capsules = api.capsules(state)
         foods = api.food(state)
         return walls, ghosts, ghost_edible, capsules, foods
@@ -204,11 +204,11 @@ class MDPAgent(Agent):
     def updatePolicy(self, col, row, directions_list):
         #calculate new policy to be used in the next iteration for self.map_matrix
         expected_utilities = []
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row], self.map_matrix[col][row-1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row], self.map_matrix[col][row+1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1], self.map_matrix[col-1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1], self.map_matrix[col+1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row]))
 
         #find index of max in list
         new_policy_index = self.findMaxIndex(expected_utilities)
@@ -219,22 +219,22 @@ class MDPAgent(Agent):
     #calculate and set utilities accoring to current policy in self.map_matrix
     def getNewUtility(self, col, row):
         if (self.map_matrix[col][row].policy_move == Directions.NORTH):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row], self.map_matrix[col][row-1])
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row])
         elif (self.map_matrix[col][row].policy_move == Directions.SOUTH):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row], self.map_matrix[col][row+1])
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row])
         elif (self.map_matrix[col][row].policy_move == Directions.EAST):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1], self.map_matrix[col-1][row])
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1])
         elif (self.map_matrix[col][row].policy_move == Directions.WEST):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1], self.map_matrix[col+1][row])
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1])
         else:
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row],self.map_matrix[col][row])
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row])
     
     #method to calculate maximum index of list
     def findMaxIndex(self, list):
         return list.index(max(list))
 
     #method to calculate utility of moving from state s to moving to s'
-    def calculateUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right, map_coordinate_back):
+    def calculateUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
         if map_coordinate_forward.map_symbol == 'X':
             map_coordinate_forward = map_coordinate
 
@@ -249,7 +249,7 @@ class MDPAgent(Agent):
         return utility
 
     #method for calculating expected utility of moving from state s to s'
-    def calculateExpectedUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right, map_coordinate_back):
+    def calculateExpectedUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
         if map_coordinate_forward.map_symbol == 'X':
             map_coordinate_forward = map_coordinate
 
