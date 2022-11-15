@@ -1,9 +1,11 @@
-# sampleAgents.py
-# parsons/07-oct-2017
+# mdpAgents.py
+# parsons/20-nov-2017
 #
-# Version 1.1
+# Version 1
 #
-# Some simple agents to work with the PacMan AI projects from:
+# The starting point for CW2.
+#
+# Intended to work with the PacMan AI projects from:
 #
 # http://ai.berkeley.edu/
 #
@@ -23,7 +25,7 @@
 # Student side autograding was added by Brad Miller, Nick Hay, and
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
-# The agents here are extensions written by Simon Parsons, based on the code in
+# The agent here is was written by Simon Parsons, based on the code in
 # pacmanAgents.py
 
 from pacman import Directions
@@ -33,89 +35,273 @@ import random
 import game
 import util
 
-# RandomAgent
-#
-# A very simple agent. Just makes a random pick every time that it is
-# asked for an action.
-class RandomAgent(Agent):
+GAMMA_VALUE = 0.75
 
-    def getAction(self, state):
-        # Get the actions we can try, and remove "STOP" if that is one of them.
-        legal = api.legalActions(state)
-        if Directions.STOP in legal:
-            legal.remove(Directions.STOP)
-        # Random choice between the legal options.
-        return api.makeMove(random.choice(legal), legal)
+#reward values
+WALL_REWARD = 0
+FOOD_REWARD = 3
+GHOST_REWARD = -15
+EMPTYSPACE_REWARD = -0.35
+CAPSULES_REWARD = 3
 
-# RandomishAgent
-#
-# A tiny bit more sophisticated. Having picked a direction, keep going
-# until that direction is no longer possible. Then make a random
-# choice.
-class RandomishAgent(Agent):
+#nondeterministic probabilities
+FORWARD = 0.8
+LEFT = 0.1
+RIGHT = 0.1
 
-    # Constructor
-    #
-    # Create a variable to hold the last action
-    def __init__(self):
-         self.last = Directions.STOP
+
+class MapCoordinate:
+    '''
+    Class that signifies a single point 
+    in a map
+    '''
+    def __init__(self, map_symbol, reward, policy_move, utility):
+        self.map_symbol = map_symbol
+        self.reward = reward
+        self.policy_move = policy_move
+        self.utility = utility
+   
+class SampleAgent(Agent):
+    '''
+    Agent that makes pacman traverse maze using the Markov Decision Problem
+    '''
+
+    # Gets run after an MDPAgent object is created and once there is
+    # game state to access.
+    def registerInitialState(self, state):
+        #get corners to generate map_width and map_height of map
+        corners = api.corners(state)
+
+        #find map_width and map_height
+        self.map_width = self.getLayoutWidth(corners)
+        self.map_height = self.getLayoutHeight(corners)
+
+        #make 2d array size of map_width and map_height
+        self.map_matrix = [[0 for row in range(self.map_height)] for col in range(self.map_width)] 
+
+        self.initializeMapMatrix(state, self.map_matrix)
     
-    def getAction(self, state):
-        # Get the actions we can try, and remove "STOP" if that is one of them.
-        legal = api.legalActions(state)
-        if Directions.STOP in legal:
-            legal.remove(Directions.STOP)
-        # If we can repeat the last action, do it. Otherwise make a
-        # random choice.
-        if self.last in legal:
-            return api.makeMove(self.last, legal)
+    def initializeMapMatrix(self, state, map_matrix):
+        #generate imp lists     
+        walls, ghosts, capsules, foods = self.generateMapElementLists(state)
+        
+        #initialize 2d array with arbitrary values of MapCoordinate class
+        for row in range(self.map_height):
+            for col in range(self.map_width):
+                if ((col, row) in walls):
+                    map_matrix[col][row] = MapCoordinate('X', WALL_REWARD, Directions.STOP, 1.0)
+                elif((col, row) in ghosts):
+                    map_matrix[col][row] = MapCoordinate('G', GHOST_REWARD, Directions.STOP, 1.0)
+                elif((col, row) in capsules):
+                    map_matrix[col][row] = MapCoordinate('O', CAPSULES_REWARD, Directions.STOP, 1.0)
+                elif((col, row) in foods):
+                    map_matrix[col][row] = MapCoordinate('o', FOOD_REWARD, Directions.STOP, 1.0)
+                else:
+                    map_matrix[col][row] = MapCoordinate(' ', EMPTYSPACE_REWARD, Directions.STOP, 1.0)
+        
+    def generateMapElementLists(self, state):
+        #generate lists of elements specified
+        walls = api.walls(state)
+        ghosts = api.ghosts(state)
+        capsules = api.capsules(state)
+        foods = api.food(state)
+        return walls, ghosts, capsules, foods
+
+    #get height of maze  
+    def getLayoutHeight(self, corners):
+        map_height = -1
+        for i in range(len(corners)):
+            if corners[i][1] > map_height:
+                map_height = corners[i][1]
+        return map_height + 1
+
+    #get width of maze
+    def getLayoutWidth(self, corners):
+        map_width = -1
+        for i in range(len(corners)):
+            if corners[i][0] > map_width:
+                map_width = corners[i][0]
+        return map_width + 1
+    
+    # This is what gets run in between multiple games
+    def final(self, state):
+        pass
+
+    #function used for visualizing the maze
+    def mapVisualization(self, attribute, map, state):  
+        pacman_pos = api.whereAmI(state)
+        x = pacman_pos[0]
+        y = pacman_pos[1]
+        y = self.map_height - (y + 1)
+
+        pacman_pos = (x, y)
+
+        for i in range(self.map_height):
+            for j in range(self.map_width):
+
+                coordinate = (j, i)
+
+                if (attribute == 'map_symbols'):    
+                    print map[j][self.map_height - (i + 1)].map_symbol,
+        
+                elif (attribute == 'rewards'):
+                    if coordinate == pacman_pos:
+                        print('_{:5.0f}_'.format(map[j][self.map_height - (i + 1)].reward)),
+                    else:
+                        print('{:5.0f}  '.format(map[j][self.map_height - (i + 1)].reward)),
+
+                elif (attribute == 'policy_moves'):    
+                    if coordinate == pacman_pos:
+                        print ('_{:5s}_'.format(map[j][self.map_height - (i + 1)].policy_move)),
+                    else:
+                        print ('{:5s}  '.format(map[j][self.map_height - (i + 1)].policy_move)),
+
+                elif (attribute == 'utilities'):    
+                    if coordinate == pacman_pos:
+                        print ('_{:5.0f}_'.format(map[j][self.map_height - (i + 1)].utility)),
+                    else:
+                        print ('{:5.0f}  '.format(map[j][self.map_height - (i + 1)].utility)),
+            print
+        print    
+        
+    #update the map with new values of rewards and symbols
+    def updateMap(self, state):
+        #generate imp lists     
+        walls, ghosts, capsules, foods = self.generateMapElementLists(state)
+        
+        for row in range(self.map_height):
+            for col in range(self.map_width):
+                if ((col, row) in walls):
+                    self.map_matrix[col][row].map_symbol = 'X'
+                    self.map_matrix[col][row].reward = WALL_REWARD
+                elif((col, row) in ghosts):
+                    self.map_matrix[col][row].map_symbol = 'G'
+                    self.map_matrix[col][row].reward = GHOST_REWARD
+                elif (((col+1, row) in ghosts) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts)):
+                    self.map_matrix[col][row].map_symbol = 'g'
+                    self.map_matrix[col][row].reward = GHOST_REWARD + 2.8
+                elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts)):
+                    self.map_matrix[col][row].map_symbol = 'g'
+                    self.map_matrix[col][row].reward = GHOST_REWARD + 3.8
+                elif((col, row) in capsules):
+                    self.map_matrix[col][row].map_symbol = 'O'
+                    self.map_matrix[col][row].reward = CAPSULES_REWARD
+                elif((col, row) in foods):
+                    self.map_matrix[col][row].map_symbol = 'o'
+                    self.map_matrix[col][row].reward = FOOD_REWARD
+                else:
+                    self.map_matrix[col][row].map_symbol = ' '
+                    self.map_matrix[col][row].reward = EMPTYSPACE_REWARD
+
+        self.map_matrix[api.whereAmI(state)[0]][api.whereAmI(state)[1]].map_symbol = 'P'              
+
+    #method for calculating updating all the utilities and policies in self.map_matrix        
+    def calculateUtilitiesAndPolicies(self, state):
+        #list to choose a move from based on calculation from the method updatePolicy
+        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
+        
+        #make copy of utilites
+        temp_map_utilities = [[0 for row in range(self.map_height)] for col in range(self.map_width)] 
+
+        #loop till near convergence 
+        for i in range(50):
+            
+            #calculate new utilities and save in temporary 2d array
+            for row in range(self.map_height):
+                for col in range(self.map_width):
+                    #if current pos not a wall, calculate new utility of pos
+                    if (not (self.map_matrix[col][row].map_symbol == 'X')):    
+                        temp_map_utilities[col][row] = self.getNewUtility(col, row)
+            
+            #copy calculated utilities to map_matrix
+            for row in range(self.map_height):
+                for col in range(self.map_width):
+                    self.map_matrix[col][row].utility = temp_map_utilities[col][row]
+
+        #update policies in actual map i.e. map_matrix
+        for row in range(self.map_height):
+           for col in range(self.map_width):
+               #if current pos not a wall, update policy of pos
+               if (not (self.map_matrix[col][row].map_symbol == 'X')):        
+                   self.updatePolicy(col, row, directions_list)           
+
+    #method to update policy in self.map_matrix
+    def updatePolicy(self, col, row, directions_list):
+        #calculate new policy to be used in the next iteration for self.map_matrix
+        expected_utilities = []
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1]))
+        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row]))
+
+        #find index of max in list
+        new_policy_index = self.findMaxIndex(expected_utilities)
+        
+        #update policy in self.map_matrix 
+        self.map_matrix[col][row].policy_move = directions_list[new_policy_index]
+
+    #calculate and set utilities accoring to current policy in self.map_matrix
+    def getNewUtility(self, col, row):
+        if (self.map_matrix[col][row].policy_move == Directions.NORTH):
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row])
+        elif (self.map_matrix[col][row].policy_move == Directions.SOUTH):
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row])
+        elif (self.map_matrix[col][row].policy_move == Directions.EAST):
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1])
+        elif (self.map_matrix[col][row].policy_move == Directions.WEST):
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1])
         else:
-            pick = random.choice(legal)
-            # Since we changed action, record what we did
-            self.last = pick
-            return api.makeMove(pick, legal)
+            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row])
+    
+    #method to calculate maximum index of list
+    def findMaxIndex(self, list):
+        return list.index(max(list))
 
-# SensingAgent
-#
-# Doesn't move, but reports sensory data available to Pacman
-class SensingAgent(Agent):
+    #method to calculate utility of moving from state s to moving to s'
+    def calculateUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
+        if map_coordinate_forward.map_symbol == 'X':
+            map_coordinate_forward = map_coordinate
+
+        if map_coordinate_left.map_symbol == 'X':
+            map_coordinate_left = map_coordinate
+
+        if map_coordinate_right.map_symbol == 'X':
+            map_coordinate_right = map_coordinate
+
+        utility = map_coordinate.reward + GAMMA_VALUE * (FORWARD*map_coordinate_forward.utility + LEFT*map_coordinate_left.utility + RIGHT*map_coordinate_right.utility)
+        return utility
+
+    #method for calculating expected utility of moving from state s to s'
+    def calculateExpectedUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
+        if map_coordinate_forward.map_symbol == 'X':
+            map_coordinate_forward = map_coordinate
+
+        if map_coordinate_left.map_symbol == 'X':
+            map_coordinate_left = map_coordinate
+
+        if map_coordinate_right.map_symbol == 'X':
+            map_coordinate_right = map_coordinate
+
+        exp_utility = FORWARD*map_coordinate_forward.utility + LEFT*map_coordinate_left.utility + RIGHT*map_coordinate_right.utility
+        return exp_utility
 
     def getAction(self, state):
+        # update map 
+        self.updateMap(state)
+        
+        #calculate new utilities and policies and save in self.map_matrix
+        self.calculateUtilitiesAndPolicies(state)
 
-        # Demonstrates the information that Pacman can access about the state
-        # of the game.
-
-        # What are the current moves available
+        #get all legal actions at current pacman pos
         legal = api.legalActions(state)
-        print "Legal moves: ", legal
-
-        # Where is Pacman?
-        pacman = api.whereAmI(state)
-        print "Pacman position: ", pacman
-
-        # Where are the ghosts?
-        print "Ghost positions:"
-        theGhosts = api.ghosts(state)
-        for i in range(len(theGhosts)):
-            print theGhosts[i]
-
-        # How far away are the ghosts?
-        print "Distance to ghosts:"
-        for i in range(len(theGhosts)):
-            print util.manhattanDistance(pacman,theGhosts[i])
-
-        # Where are the capsules?
-        print "Capsule locations:"
-        print api.capsules(state)
         
-        # Where is the food?
-        print "Food locations: "
-        print api.food(state)
-
-        # Where are the walls?
-        print "Wall locations: "
-        print api.walls(state)
+        #get pacman pos
+        pacman_pos = api.whereAmI(state)
         
-        # getAction has to return a move. Here we pass "STOP" to the
-        # API to ask Pacman to stay where they are.
-        return api.makeMove(Directions.STOP, legal)
+        #get the policy saved on pacmans current pos
+        move_to_make = self.map_matrix[pacman_pos[0]][pacman_pos[1]].policy_move
+
+        #make move
+        return api.makeMove(move_to_make, legal)
+    

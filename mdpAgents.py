@@ -35,19 +35,18 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.6
-CONVERGENCE_ITERATIONS = 100
+GAMMA_VALUE = 0.75
+CONVERGENCE_ITERATIONS = 50
 
 #reward values
 WALL_REWARD = 0
-FOOD_REWARD = 5
-GHOST_REWARD = -80
-VULNERABLE_GHOST_REWARD = 10
-EMPTY_REWARD = -50
-CAPSULES_REWARD = 5
+FOOD_REWARD = 3
+GHOST_REWARD = -15
+VULNERABLE_GHOST_REWARD = 4
+EMPTY_REWARD = -0.35
+CAPSULES_REWARD = 3
 
-GHOST_DISTANCE = 5
-
+GHOST_RADIUS = 3
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
 NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
@@ -147,50 +146,49 @@ class MDPAgent(Agent):
                     self.game_state[col][row].reward = FOOD_REWARD
                 else:
                     self.game_state[col][row].reward = EMPTY_REWARD
-                if((col, row) in close_to_ghost and (col, row) not in walls):
-                    print(ghost_edible[0][1],ghost_edible[1][1])
+                
+                close_to_ghost = self.ghostRadius(state, 3)    
+                if((col, row) in close_to_ghost[0] and (col, row) not in walls):
+                    index = close_to_ghost[0].index((col, row))
+                    manhatten_multiplier = close_to_ghost[1][index]
                     if len(ghost_edible) < 2:
-                        self.game_state[col][row].reward = GHOST_REWARD 
+                        self.game_state[col][row].reward = GHOST_REWARD + 1.5*manhatten_multiplier
                     elif ghost_edible[0][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - 1.5*manhatten_multiplier
                     elif ghost_edible[1][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
+                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - 1.5*manhatten_multiplier
                     else:
-                        self.game_state[col][row].reward = GHOST_REWARD 
+                        self.game_state[col][row].reward = GHOST_REWARD + 1.5*manhatten_multiplier
                     
-        for row in range(self.map_y):
-            row_values = []
-            for col in range(self.map_x):
-                row_values.append(self.game_state[col][row].reward)
-            print(row_values)
+        # for row in range(self.map_y):
+        #     row_values = []
+        #     for col in range(self.map_x):
+        #         row_values.append(self.game_state[col][row].reward)
+        #     print(row_values)
         
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
-
-        #find map_x and map_y
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
         grid = [(i,j) for i in range(self.map_y) for j in range(self.map_x)]
-    # When passed a list of object locations, tests how far they are
-    # from Pacman, and only returns the ones that are within "limit".
-
         ghosts = api.ghosts(state)
         withinLimit = set()
         
         for ghost in ghosts:
             for i in range(len(grid)):
-                if util.manhattanDistance(ghost,grid[i]) <= limit:
-                    withinLimit.add(grid[i])
+                manhattanDistance = util.manhattanDistance(ghost,grid[i])
+                if manhattanDistance <= limit:
+                    withinLimit.add((grid[i],manhattanDistance))
 
-        return list(withinLimit)
+        return list(map(list, zip(*withinLimit)))
     
     #method for calculating updating all the utilities and policies in self.game_state        
     def calculateUtilitiesAndPolicies(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
-        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST]
+        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
         
         #make copy of utilites
-        temp_map_utilities = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
+        converging_utilities = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
         #loop till near convergence 
         for _ in range(CONVERGENCE_ITERATIONS):
@@ -200,12 +198,12 @@ class MDPAgent(Agent):
                 for col in range(self.map_x):
                     #if current pos not a wall, calculate new utility of pos
                     if (not (self.game_state[col][row].wall_bool == True)):    
-                        temp_map_utilities[col][row] = self.getNewUtility(col, row)
+                        converging_utilities[col][row] = self.getNewUtility(col, row)
             
             #copy calculated utilities to game_state
             for row in range(self.map_y):
                 for col in range(self.map_x):
-                    self.game_state[col][row].utility = temp_map_utilities[col][row]
+                    self.game_state[col][row].utility = converging_utilities[col][row]
 
         #update policies in actual map i.e. game_state
         for row in range(self.map_y):
@@ -222,7 +220,7 @@ class MDPAgent(Agent):
         expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col+1][row], self.game_state[col-1][row]))
         expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row+1], self.game_state[col][row-1]))
         expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1]))
-
+        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row], self.game_state[col][row]))
         #find index of max in list
         new_policy_index = self.findMaxIndex(expected_utilities)
         
@@ -234,9 +232,9 @@ class MDPAgent(Agent):
         if (self.game_state[col][row].policy == Directions.NORTH):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row])
         elif (self.game_state[col][row].policy == Directions.SOUTH):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col+1][row], self.game_state[col-1][row])
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col-1][row], self.game_state[col+1][row])
         elif (self.game_state[col][row].policy == Directions.EAST):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row+1], self.game_state[col][row-1])
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row-1], self.game_state[col][row+1])
         elif (self.game_state[col][row].policy == Directions.WEST):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1])
         else:
@@ -247,30 +245,30 @@ class MDPAgent(Agent):
         return list.index(max(list))
 
     #method to calculate utility of moving from state s to moving to s'
-    def calculateUtility(self, coordinates, intended_move, alt_move_one, alt_move_two):
+    def calculateUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
         if intended_move.wall_bool == True:
-            intended_move = coordinates
+            intended_move = current_pos
 
         if alt_move_one.wall_bool == True:
-            alt_move_one = coordinates
+            alt_move_one = current_pos
 
         if alt_move_two.wall_bool == True:
-            alt_move_two = coordinates
+            alt_move_two = current_pos
 
-        utility = coordinates.reward + GAMMA_VALUE * (DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + 
+        utility = current_pos.reward + GAMMA_VALUE * (DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + 
                                                         (NON_DETERMINISTIC_ACTION)*alt_move_two.utility)
         return utility
 
     #method for calculating expected utility of moving from state s to s'
-    def calculateExpectedUtility(self, coordinates, intended_move, alt_move_one, alt_move_two):
+    def calculateExpectedUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
         if intended_move.wall_bool == True:
-            intended_move = coordinates
+            intended_move = current_pos
 
         if alt_move_one.wall_bool == True:
-            alt_move_one = coordinates
+            alt_move_one = current_pos
 
         if alt_move_two.wall_bool == True:
-            alt_move_two = coordinates
+            alt_move_two = current_pos
 
         exp_utility = DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + (NON_DETERMINISTIC_ACTION)*alt_move_two.utility
         return exp_utility
