@@ -35,19 +35,19 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 1
+GAMMA_VALUE = 0.8
 
 #reward values
-WALL_REWARD = 1
+WALL_REWARD = 0
 FOOD_REWARD = 3
 GHOST_REWARD = -10
-VULNERABLE_GHOST_REWARD = 3
+VULNERABLE_GHOST_REWARD = 5
 EMPTYSPACE_REWARD = -5
-CAPSULES_REWARD = 3
+CAPSULES_REWARD = 1
 
 #nondeterministic probabilities
 DETERMINISTICACTION = api.nonDeterministic
-NONDETERMINISTICACTION = 1-DETERMINISTICACTION
+NONDETERMINISTICACTION = (1-DETERMINISTICACTION)/2
 
 
 class MapCoordinate:
@@ -90,10 +90,10 @@ class MDPAgent(Agent):
             for col in range(self.map_width):
                 if ((col, row) in walls):
                     map_matrix[col][row] = MapCoordinate('X', WALL_REWARD, Directions.STOP, 1.0)
-                elif((col, row) in ghosts and ghost_edible==0):
-                    map_matrix[col][row] = MapCoordinate('G', GHOST_REWARD, Directions.STOP, 1.0)
-                elif((col, row) in ghosts and ghost_edible==1):
+                elif(((col, row),1) in ghost_edible):
                     map_matrix[col][row] = MapCoordinate('E', VULNERABLE_GHOST_REWARD, Directions.STOP, 1.0)
+                elif((col, row) in ghosts):
+                    map_matrix[col][row] = MapCoordinate('G', GHOST_REWARD, Directions.STOP, 1.0)
                 elif((col, row) in capsules):
                     map_matrix[col][row] = MapCoordinate('O', CAPSULES_REWARD, Directions.STOP, 1.0)
                 elif((col, row) in foods):
@@ -143,19 +143,19 @@ class MDPAgent(Agent):
                 elif((col, row) in ghosts and ghost_edible==0):
                     self.map_matrix[col][row].map_symbol = 'G'
                     self.map_matrix[col][row].reward = GHOST_REWARD
-                elif (((col+1, row) in ghosts ) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts) and ghost_edible==0):
+                elif (((col+1, row) in ghosts ) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts)):
                     self.map_matrix[col][row].map_symbol = 'g'
                     self.map_matrix[col][row].reward = GHOST_REWARD + 4
-                elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts) and ghost_edible==0):
+                elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts)):
                     self.map_matrix[col][row].map_symbol = 'g'
                     self.map_matrix[col][row].reward = GHOST_REWARD + 7
-                elif((col, row) in ghosts and ghost_edible==1):
+                elif(((col, row),1) in ghost_edible):
                     self.map_matrix[col][row].map_symbol = 'E'
                     self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD
-                elif (((col+1, row) in ghosts) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts) and ghost_edible==1):
+                elif ((((col+1, row),1) in ghost_edible) or (((col, row+1),1) in ghost_edible) or (((col-1, row),1) in ghost_edible) or (((col, row-1),1) in ghost_edible)):
                     self.map_matrix[col][row].map_symbol = 'e'
                     self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD + 2
-                elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts) and ghost_edible==1):
+                elif ((((col+1,row+1),1) in ghost_edible) or (((col+1,row-1),1) in ghost_edible) or (((col-1,row+1),1) in ghost_edible) or (((col-1,row-1),1) in ghost_edible)):
                     self.map_matrix[col][row].map_symbol = 'e'
                     self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD + 4
                 elif((col, row) in capsules):
@@ -243,12 +243,9 @@ class MDPAgent(Agent):
 
         if map_coordinate_right.map_symbol == 'X':
             map_coordinate_right = map_coordinate
-            
-        if map_coordinate_back.map_symbol == 'X':
-            map_coordinate_back = map_coordinate
 
-        utility = map_coordinate.reward + GAMMA_VALUE * (DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION/3)*map_coordinate_left.utility + 
-                                                        (NONDETERMINISTICACTION/3)*map_coordinate_right.utility + (NONDETERMINISTICACTION/3)*map_coordinate_back.utility)
+        utility = map_coordinate.reward + GAMMA_VALUE * (DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + 
+                                                        (NONDETERMINISTICACTION)*map_coordinate_right.utility)
         return utility
 
     #method for calculating expected utility of moving from state s to s'
@@ -262,10 +259,7 @@ class MDPAgent(Agent):
         if map_coordinate_right.map_symbol == 'X':
             map_coordinate_right = map_coordinate
 
-        if map_coordinate_back.map_symbol == 'X':
-            map_coordinate_back = map_coordinate
-
-        exp_utility = DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION/3)*map_coordinate_left.utility + (NONDETERMINISTICACTION/3)*map_coordinate_right.utility + (NONDETERMINISTICACTION/3)*map_coordinate_back.utility
+        exp_utility = DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + (NONDETERMINISTICACTION)*map_coordinate_right.utility
         return exp_utility
 
     def getAction(self, state):
