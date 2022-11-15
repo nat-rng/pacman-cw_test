@@ -35,16 +35,18 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.9
-CONVERGENCE_ITERATIONS = 30
+GAMMA_VALUE = 0.6
+CONVERGENCE_ITERATIONS = 100
 
 #reward values
 WALL_REWARD = 0
-FOOD_REWARD = 15
+FOOD_REWARD = 5
 GHOST_REWARD = -80
-VULNERABLE_GHOST_REWARD = 50
-EMPTYSPACE_REWARD = -50
-CAPSULES_REWARD = 10
+VULNERABLE_GHOST_REWARD = 10
+EMPTY_REWARD = -50
+CAPSULES_REWARD = 5
+
+GHOST_DISTANCE = 5
 
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
@@ -79,8 +81,8 @@ class MDPAgent(Agent):
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
 
-        #make 2d array size of map_x and map_y
-        self.game_state = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
+        #create placeholder game_state (a matrix with empty space coordinantes)
+        self.game_state = [[Coordinates(False, EMPTY_REWARD) for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
         self.initializeMapStates(state, self.game_state)
         #get height of maze  
@@ -119,7 +121,7 @@ class MDPAgent(Agent):
                 elif((col, row) in foods):
                     game_state[col][row] = Coordinates(False, FOOD_REWARD)
                 else:
-                    game_state[col][row] = Coordinates(False, EMPTYSPACE_REWARD)
+                    game_state[col][row] = Coordinates(False, EMPTY_REWARD)
     
     # This is what gets run in between multiple games
     def final(self, state):
@@ -129,36 +131,47 @@ class MDPAgent(Agent):
     def updateRewards(self, state):
         #generate imp lists     
         walls = api.walls(state)
-        ghosts = api.ghosts(state)
         ghost_edible = api.ghostStates(state)
         capsules = api.capsules(state)
         foods = api.food(state)
+        close_to_ghost = self.ghostRadius(state, 3)
         
         for row in range(self.map_y):
             for col in range(self.map_x):
                 if ((col, row) in walls):
                     self.game_state[col][row].wall_bool = True
                     self.game_state[col][row].reward = WALL_REWARD
-                elif((col, row) in ghosts and ghost_edible==0):
-                    self.game_state[col][row].reward = GHOST_REWARD
-                elif (((col+1, row) in ghosts ) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts)):
-                    self.game_state[col][row].reward = GHOST_REWARD - 15
-                elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts)):
-                    self.game_state[col][row].reward = GHOST_REWARD - 30
-                elif(((col, row),1) in ghost_edible):
-                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
-                elif ((((col+1, row),1) in ghost_edible) or (((col, row+1),1) in ghost_edible) or (((col-1, row),1) in ghost_edible) or (((col, row-1),1) in ghost_edible)):
-                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD + 10
-                elif ((((col+1,row+1),1) in ghost_edible) or (((col+1,row-1),1) in ghost_edible) or (((col-1,row+1),1) in ghost_edible) or (((col-1,row-1),1) in ghost_edible)):
-                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD + 15
                 elif((col, row) in capsules):
                     self.game_state[col][row].reward = CAPSULES_REWARD
                 elif((col, row) in foods):
                     self.game_state[col][row].reward = FOOD_REWARD
+                elif ((col, row) in close_to_ghost and ((col, row),1) in ghost_edible and (col, row) not in walls):
+                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
+                elif ((col, row) in close_to_ghost and ((col, row),0) in ghost_edible and (col, row) not in walls):
+                    self.game_state[col][row].reward = GHOST_REWARD 
                 else:
-                    self.game_state[col][row].reward = EMPTYSPACE_REWARD
-            
+                    self.game_state[col][row].reward = EMPTY_REWARD
+        
+    def ghostRadius(self, state, limit):
+        corners = api.corners(state)
 
+        #find map_x and map_y
+        self.map_x = self.getLayoutWidth(corners)
+        self.map_y = self.getLayoutHeight(corners)
+        grid = [(i,j) for i in range(self.map_y) for j in range(self.map_x)]
+    # When passed a list of object locations, tests how far they are
+    # from Pacman, and only returns the ones that are within "limit".
+
+        ghosts = api.ghosts(state)
+        withinLimit = set()
+        
+        for ghost in ghosts:
+            for i in range(len(grid)):
+                if util.manhattanDistance(ghost,grid[i]) <= limit:
+                    withinLimit.add(grid[i])
+
+        return list(withinLimit)
+    
     #method for calculating updating all the utilities and policies in self.game_state        
     def calculateUtilitiesAndPolicies(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
