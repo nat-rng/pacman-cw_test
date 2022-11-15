@@ -35,30 +35,29 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.8
+GAMMA_VALUE = 0.9
 
 #reward values
 WALL_REWARD = 0
-FOOD_REWARD = 3
-GHOST_REWARD = -10
-VULNERABLE_GHOST_REWARD = 3
-EMPTYSPACE_REWARD = -5
-CAPSULES_REWARD = 3
+FOOD_REWARD = 15
+GHOST_REWARD = -100
+VULNERABLE_GHOST_REWARD = 50
+EMPTYSPACE_REWARD = -50
+CAPSULES_REWARD = 10
 
 #nondeterministic probabilities
 DETERMINISTICACTION = api.nonDeterministic
 NONDETERMINISTICACTION = (1-DETERMINISTICACTION)/2
 
 
-class MapCoordinate:
+class Coordinates():
     '''
-    Class that signifies a single point 
-    in a map
+    Sets atrtibutes for point on the map if it is a wall, reward, policy and utility
     '''
-    def __init__(self, map_symbol, reward, policy_move, utility):
-        self.map_symbol = map_symbol
+    def __init__(self, wall_bool, reward, policy=Directions.STOP, utility=0.0):
+        self.wall_bool = wall_bool
         self.reward = reward
-        self.policy_move = policy_move
+        self.policy = policy
         self.utility = utility
    
 class MDPAgent(Agent):
@@ -66,168 +65,156 @@ class MDPAgent(Agent):
     Agent that makes pacman traverse maze using the Markov Decision Problem
     '''
 
+    def __init__(self):
+        print "Starting up MDPAgent!"
+        name = "Pacman"
     # Gets run after an MDPAgent object is created and once there is
     # game state to access.
     def registerInitialState(self, state):
-        #get corners to generate map_width and map_height of map
+        #get corners to generate map_x and map_y of map
         corners = api.corners(state)
 
-        #find map_width and map_height
-        self.map_width = self.getLayoutWidth(corners)
-        self.map_height = self.getLayoutHeight(corners)
+        #find map_x and map_y
+        self.map_x = self.getLayoutWidth(corners)
+        self.map_y = self.getLayoutHeight(corners)
 
-        #make 2d array size of map_width and map_height
-        self.map_matrix = [[0 for row in range(self.map_height)] for col in range(self.map_width)] 
+        #make 2d array size of map_x and map_y
+        self.game_state = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
-        self.initializeMapMatrix(state, self.map_matrix)
+        self.initializeMapMatrix(state, self.game_state)
     
-    def initializeMapMatrix(self, state, map_matrix):
+    def initializeMapMatrix(self, state, game_state):
         #generate imp lists     
-        walls, ghosts, ghost_edible, capsules, foods = self.generateMapElementLists(state)
+        walls = api.walls(state)
+        ghosts = api.ghosts(state)
+        capsules = api.capsules(state)
+        foods = api.food(state)
         
         #initialize 2d array with arbitrary values of MapCoordinate class
-        for row in range(self.map_height):
-            for col in range(self.map_width):
+        for row in range(self.map_y):
+            for col in range(self.map_x):
                 if ((col, row) in walls):
-                    map_matrix[col][row] = MapCoordinate('X', WALL_REWARD, Directions.STOP, 1.0)
-                elif(((col, row),1) in ghost_edible):
-                    map_matrix[col][row] = MapCoordinate('E', VULNERABLE_GHOST_REWARD, Directions.STOP, 1.0)
+                    game_state[col][row] = Coordinates(True, WALL_REWARD)
                 elif((col, row) in ghosts):
-                    map_matrix[col][row] = MapCoordinate('G', GHOST_REWARD, Directions.STOP, 1.0)
+                    game_state[col][row] = Coordinates(False, GHOST_REWARD)
                 elif((col, row) in capsules):
-                    map_matrix[col][row] = MapCoordinate('O', CAPSULES_REWARD, Directions.STOP, 1.0)
+                    game_state[col][row] = Coordinates(False, CAPSULES_REWARD)
                 elif((col, row) in foods):
-                    map_matrix[col][row] = MapCoordinate('o', FOOD_REWARD, Directions.STOP, 1.0)
+                    game_state[col][row] = Coordinates(False, FOOD_REWARD)
                 else:
-                    map_matrix[col][row] = MapCoordinate(' ', EMPTYSPACE_REWARD, Directions.STOP, 1.0)
-        
-    def generateMapElementLists(self, state):
-        #generate lists of elements specified
+                    game_state[col][row] = Coordinates(False, EMPTYSPACE_REWARD)
+    
+    #get height of maze  
+    def getLayoutHeight(self, corners):
+        map_y = -1
+        for i in range(len(corners)):
+            if corners[i][1] > map_y:
+                map_y = corners[i][1]
+        return map_y + 1
+
+    #get width of maze
+    def getLayoutWidth(self, corners):
+        map_x = -1
+        for i in range(len(corners)):
+            if corners[i][0] > map_x:
+                map_x = corners[i][0]
+        return map_x + 1
+    
+    # This is what gets run in between multiple games
+    def final(self, state):
+        print "Looks like the game just ended!"
+
+    #update the map with new values of rewards and symbols
+    def updateRewards(self, state):
+        #generate imp lists     
         walls = api.walls(state)
         ghosts = api.ghosts(state)
         ghost_edible = api.ghostStates(state)
         capsules = api.capsules(state)
         foods = api.food(state)
-        return walls, ghosts, ghost_edible, capsules, foods
-
-    #get height of maze  
-    def getLayoutHeight(self, corners):
-        map_height = -1
-        for i in range(len(corners)):
-            if corners[i][1] > map_height:
-                map_height = corners[i][1]
-        return map_height + 1
-
-    #get width of maze
-    def getLayoutWidth(self, corners):
-        map_width = -1
-        for i in range(len(corners)):
-            if corners[i][0] > map_width:
-                map_width = corners[i][0]
-        return map_width + 1
-    
-    # This is what gets run in between multiple games
-    def final(self, state):
-        pass
-
-    #update the map with new values of rewards and symbols
-    def updateMap(self, state):
-        #generate imp lists     
-        walls, ghosts, ghost_edible, capsules, foods = self.generateMapElementLists(state)
         
-        for row in range(self.map_height):
-            for col in range(self.map_width):
+        for row in range(self.map_y):
+            for col in range(self.map_x):
                 if ((col, row) in walls):
-                    self.map_matrix[col][row].map_symbol = 'X'
-                    self.map_matrix[col][row].reward = WALL_REWARD
+                    self.game_state[col][row].wall_bool = True
+                    self.game_state[col][row].reward = WALL_REWARD
                 elif((col, row) in ghosts and ghost_edible==0):
-                    self.map_matrix[col][row].map_symbol = 'G'
-                    self.map_matrix[col][row].reward = GHOST_REWARD
+                    self.game_state[col][row].reward = GHOST_REWARD
                 elif (((col+1, row) in ghosts ) or ((col, row+1) in ghosts) or ((col-1, row) in ghosts) or ((col, row-1) in ghosts)):
-                    self.map_matrix[col][row].map_symbol = 'g'
-                    self.map_matrix[col][row].reward = GHOST_REWARD + 4
+                    self.game_state[col][row].reward = GHOST_REWARD - 15
                 elif (((col+1,row+1) in ghosts) or ((col+1,row-1) in ghosts) or ((col-1,row+1) in ghosts) or ((col-1,row-1) in ghosts)):
-                    self.map_matrix[col][row].map_symbol = 'g'
-                    self.map_matrix[col][row].reward = GHOST_REWARD + 7
+                    self.game_state[col][row].reward = GHOST_REWARD - 30
                 elif(((col, row),1) in ghost_edible):
-                    self.map_matrix[col][row].map_symbol = 'E'
-                    self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD
+                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD
                 elif ((((col+1, row),1) in ghost_edible) or (((col, row+1),1) in ghost_edible) or (((col-1, row),1) in ghost_edible) or (((col, row-1),1) in ghost_edible)):
-                    self.map_matrix[col][row].map_symbol = 'e'
-                    self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD + 2
+                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD + 10
                 elif ((((col+1,row+1),1) in ghost_edible) or (((col+1,row-1),1) in ghost_edible) or (((col-1,row+1),1) in ghost_edible) or (((col-1,row-1),1) in ghost_edible)):
-                    self.map_matrix[col][row].map_symbol = 'e'
-                    self.map_matrix[col][row].reward = VULNERABLE_GHOST_REWARD + 4
+                    self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD + 15
                 elif((col, row) in capsules):
-                    self.map_matrix[col][row].map_symbol = 'O'
-                    self.map_matrix[col][row].reward = CAPSULES_REWARD
+                    self.game_state[col][row].reward = CAPSULES_REWARD
                 elif((col, row) in foods):
-                    self.map_matrix[col][row].map_symbol = 'o'
-                    self.map_matrix[col][row].reward = FOOD_REWARD
+                    self.game_state[col][row].reward = FOOD_REWARD
                 else:
-                    self.map_matrix[col][row].map_symbol = ' '
-                    self.map_matrix[col][row].reward = EMPTYSPACE_REWARD
+                    self.game_state[col][row].reward = EMPTYSPACE_REWARD
+            
 
-        self.map_matrix[api.whereAmI(state)[0]][api.whereAmI(state)[1]].map_symbol = 'P'              
-
-    #method for calculating updating all the utilities and policies in self.map_matrix        
+    #method for calculating updating all the utilities and policies in self.game_state        
     def calculateUtilitiesAndPolicies(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
         directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
         
         #make copy of utilites
-        temp_map_utilities = [[0 for row in range(self.map_height)] for col in range(self.map_width)] 
+        temp_map_utilities = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
         #loop till near convergence 
         for i in range(50):
             
             #calculate new utilities and save in temporary 2d array
-            for row in range(self.map_height):
-                for col in range(self.map_width):
+            for row in range(self.map_y):
+                for col in range(self.map_x):
                     #if current pos not a wall, calculate new utility of pos
-                    if (not (self.map_matrix[col][row].map_symbol == 'X')):    
+                    if (not (self.game_state[col][row].wall_bool == True)):    
                         temp_map_utilities[col][row] = self.getNewUtility(col, row)
             
-            #copy calculated utilities to map_matrix
-            for row in range(self.map_height):
-                for col in range(self.map_width):
-                    self.map_matrix[col][row].utility = temp_map_utilities[col][row]
+            #copy calculated utilities to game_state
+            for row in range(self.map_y):
+                for col in range(self.map_x):
+                    self.game_state[col][row].utility = temp_map_utilities[col][row]
 
-        #update policies in actual map i.e. map_matrix
-        for row in range(self.map_height):
-           for col in range(self.map_width):
+        #update policies in actual map i.e. game_state
+        for row in range(self.map_y):
+           for col in range(self.map_x):
                #if current pos not a wall, update policy of pos
-               if (not (self.map_matrix[col][row].map_symbol == 'X')):        
+               if (not (self.game_state[col][row].wall_bool == True)):        
                    self.updatePolicy(col, row, directions_list)           
 
-    #method to update policy in self.map_matrix
+    #method to update policy in self.game_state
     def updatePolicy(self, col, row, directions_list):
-        #calculate new policy to be used in the next iteration for self.map_matrix
+        #calculate new policy to be used in the next iteration for self.game_state
         expected_utilities = []
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col+1][row], self.game_state[col-1][row]))
+        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row+1], self.game_state[col][row-1]))
+        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1]))
 
         #find index of max in list
         new_policy_index = self.findMaxIndex(expected_utilities)
         
-        #update policy in self.map_matrix 
-        self.map_matrix[col][row].policy_move = directions_list[new_policy_index]
+        #update policy in self.game_state 
+        self.game_state[col][row].policy = directions_list[new_policy_index]
 
-    #calculate and set utilities accoring to current policy in self.map_matrix
+    #calculate and set utilities accoring to current policy in self.game_state
     def getNewUtility(self, col, row):
-        if (self.map_matrix[col][row].policy_move == Directions.NORTH):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row+1], self.map_matrix[col-1][row], self.map_matrix[col+1][row])
-        elif (self.map_matrix[col][row].policy_move == Directions.SOUTH):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row-1], self.map_matrix[col+1][row], self.map_matrix[col-1][row])
-        elif (self.map_matrix[col][row].policy_move == Directions.EAST):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col+1][row], self.map_matrix[col][row+1], self.map_matrix[col][row-1])
-        elif (self.map_matrix[col][row].policy_move == Directions.WEST):
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col-1][row], self.map_matrix[col][row-1], self.map_matrix[col][row+1])
+        if (self.game_state[col][row].policy == Directions.NORTH):
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row])
+        elif (self.game_state[col][row].policy == Directions.SOUTH):
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col+1][row], self.game_state[col-1][row])
+        elif (self.game_state[col][row].policy == Directions.EAST):
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row+1], self.game_state[col][row-1])
+        elif (self.game_state[col][row].policy == Directions.WEST):
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1])
         else:
-            return self.calculateUtility(self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row], self.map_matrix[col][row])
+            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row], self.game_state[col][row], self.game_state[col][row])
     
     #method to calculate maximum index of list
     def findMaxIndex(self, list):
@@ -235,13 +222,13 @@ class MDPAgent(Agent):
 
     #method to calculate utility of moving from state s to moving to s'
     def calculateUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
-        if map_coordinate_forward.map_symbol == 'X':
+        if map_coordinate_forward.wall_bool == True:
             map_coordinate_forward = map_coordinate
 
-        if map_coordinate_left.map_symbol == 'X':
+        if map_coordinate_left.wall_bool == True:
             map_coordinate_left = map_coordinate
 
-        if map_coordinate_right.map_symbol == 'X':
+        if map_coordinate_right.wall_bool == True:
             map_coordinate_right = map_coordinate
 
         utility = map_coordinate.reward + GAMMA_VALUE * (DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + 
@@ -250,13 +237,13 @@ class MDPAgent(Agent):
 
     #method for calculating expected utility of moving from state s to s'
     def calculateExpectedUtility(self, map_coordinate, map_coordinate_forward, map_coordinate_left, map_coordinate_right):
-        if map_coordinate_forward.map_symbol == 'X':
+        if map_coordinate_forward.wall_bool == True:
             map_coordinate_forward = map_coordinate
 
-        if map_coordinate_left.map_symbol == 'X':
+        if map_coordinate_left.wall_bool == True:
             map_coordinate_left = map_coordinate
 
-        if map_coordinate_right.map_symbol == 'X':
+        if map_coordinate_right.wall_bool == True:
             map_coordinate_right = map_coordinate
 
         exp_utility = DETERMINISTICACTION*map_coordinate_forward.utility + (NONDETERMINISTICACTION)*map_coordinate_left.utility + (NONDETERMINISTICACTION)*map_coordinate_right.utility
@@ -264,9 +251,9 @@ class MDPAgent(Agent):
 
     def getAction(self, state):
         # update map 
-        self.updateMap(state)
+        self.updateRewards(state)
         
-        #calculate new utilities and policies and save in self.map_matrix
+        #calculate new utilities and policies and save in self.game_state
         self.calculateUtilitiesAndPolicies(state)
 
         #get all legal actions at current pacman pos
@@ -276,7 +263,7 @@ class MDPAgent(Agent):
         pacman_pos = api.whereAmI(state)
         
         #get the policy saved on pacmans current pos
-        move_to_make = self.map_matrix[pacman_pos[0]][pacman_pos[1]].policy_move
+        move_to_make = self.game_state[pacman_pos[0]][pacman_pos[1]].policy
 
         #make move
         return api.makeMove(move_to_make, legal)
