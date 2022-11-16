@@ -45,11 +45,12 @@ VULNERABLE_GHOST_REWARD = 6
 EMPTY_REWARD = -1
 CAPSULES_REWARD = 4
 
-DISTANCE_MULTIPLIER = 2.2
-GHOST_RADIUS = 2.1
+DISTANCE_MULTIPLIER = 2.2 #2.2
+GHOST_RADIUS = 3 #2.1
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
 NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
+NO_OF_RUNS = 0
 
 
 class Coordinates():
@@ -80,10 +81,11 @@ class MDPAgent(Agent):
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
 
+        #Code was modified from the provided mapAgents.py file from PRactical 5    
         #create placeholder game_state (a matrix with empty space coordinantes)
         self.game_state = [[Coordinates(False, EMPTY_REWARD) for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
-        self.initializeMapStates(state, self.game_state)
+        self.initializeMapStates(state)
         #get height of maze  
  
     def getLayoutHeight(self, corners):
@@ -102,7 +104,7 @@ class MDPAgent(Agent):
         return map_x + 1
 
   
-    def initializeMapStates(self, state, game_state):
+    def initializeMapStates(self, state):
         #generate imp lists     
         walls = api.walls(state)
         ghosts = api.ghosts(state)
@@ -110,22 +112,25 @@ class MDPAgent(Agent):
         foods = api.food(state)
         
         #initialize 2d array with arbitrary values of MapCoordinate class
-        for row in range(self.map_y):
-            for col in range(self.map_x):
-                if ((col, row) in walls):
-                    game_state[col][row] = Coordinates(True, WALL_REWARD)
-                elif((col, row) in ghosts):
-                    game_state[col][row] = Coordinates(False, GHOST_REWARD)
-                elif((col, row) in capsules):
-                    game_state[col][row] = Coordinates(False, CAPSULES_REWARD)
-                elif((col, row) in foods):
-                    game_state[col][row] = Coordinates(False, FOOD_REWARD)
-                else:
-                    game_state[col][row] = Coordinates(False, EMPTY_REWARD)
+        for wall in walls:
+            self.game_state[wall[0]][wall[1]] = Coordinates(True, WALL_REWARD)
+
+        for capsule in capsules:
+            self.game_state[capsule[0]][capsule[1]] = Coordinates(False, CAPSULES_REWARD)
+
+        for food in foods:
+            self.game_state[food[0]][food[1]] = Coordinates(False, FOOD_REWARD)
+
+        for ghost in ghosts:
+            self.game_state[ghost[0]][ghost[1]] = Coordinates(False, GHOST_REWARD)
+
  
     # This is what gets run in between multiple games
     def final(self, state):
+        global NO_OF_RUNS 
+        NO_OF_RUNS += 1
         print "Looks like the game just ended!"
+        print "This was run number: " + str(NO_OF_RUNS)
  
     #update the map with new values of rewards and symbols
     def updateRewards(self, state):     
@@ -134,36 +139,43 @@ class MDPAgent(Agent):
         capsules = api.capsules(state)
         foods = api.food(state)
         close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
+
+        for capsule in capsules:
+            self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
+
+        for food in foods:
+            self.game_state[food[0]][food[1]].reward = FOOD_REWARD
+
+        for area in close_to_ghost[0]:
+            if((area[0], area[1]) not in walls):
+                index = close_to_ghost[0].index((area[0], area[1]))
+                manhatten_distance = close_to_ghost[1][index]
+                if len(ghost_edible) < 2:
+                    self.game_state[area[0]][area[1]].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
+
+                for i in range(len(ghost_edible)):
+                    if ghost_edible[i][1] == 1:
+                        self.game_state[area[0]][area[1]].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
+                    else:
+                        self.game_state[area[0]][area[1]].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
         
         for row in range(self.map_y):
             for col in range(self.map_x):
-                if ((col, row) in walls):
-                    self.game_state[col][row].wall_bool = True
-                    self.game_state[col][row].reward = WALL_REWARD
-                elif((col, row) in capsules):
-                    self.game_state[col][row].reward = CAPSULES_REWARD
-                elif((col, row) in foods):
-                    self.game_state[col][row].reward = FOOD_REWARD
-                else:
+                excluded_coords = [walls + capsules + foods + close_to_ghost[0]]
+                if (col, row) not in set().union(*excluded_coords):
                     self.game_state[col][row].reward = EMPTY_REWARD
-                
-                if((col, row) in close_to_ghost[0] and (col, row) not in walls):
-                    index = close_to_ghost[0].index((col, row))
-                    manhatten_distance = close_to_ghost[1][index]
-                    if len(ghost_edible) < 2:
-                        self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
 
-                    for i in range(len(ghost_edible)):
-                        if ghost_edible[i][1] == 1:
-                            self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
-                        else:
-                            self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
+        # for row in range(self.map_y):
+        #     row_values = []
+        #     for col in range(self.map_x):
+        #         row_values.append(self.game_state[col][row].reward)
+        #     print(row_values)
      
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
-        grid = [(i,j) for j in range(self.map_y) for i in range(self.map_x)]
+        grid = [(i,j) for i in range(self.map_x) for j in range(self.map_y)]
         ghosts = api.ghosts(state)
         withinLimit = set()
         
