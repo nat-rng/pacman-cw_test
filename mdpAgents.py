@@ -34,19 +34,19 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.9
-CONVERGENCE_ITERATIONS = 50
+GAMMA_VALUE = 0.95
+CONVERGENCE_ITERATIONS = 40
 
 #reward values
 WALL_REWARD = 0
 FOOD_REWARD = 8
-GHOST_REWARD = -20
+GHOST_REWARD = -22
 VULNERABLE_GHOST_REWARD = 6
 EMPTY_REWARD = -1
 CAPSULES_REWARD = 4
 
-DISTANCE_MULTIPLIER = 2.2 #2.2
-GHOST_RADIUS = 3 #2.1
+DISTANCE_MULTIPLIER = 2 #2.2
+GHOST_RADIUS = 3.5 #2.1
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
 NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
@@ -194,7 +194,7 @@ class MDPAgent(Agent):
         directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
         
         #make copy of utilites
-        converging_utilities = [[0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
+        converging_utilities = [[0.0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
         #loop till near convergence 
         for _ in range(CONVERGENCE_ITERATIONS):
