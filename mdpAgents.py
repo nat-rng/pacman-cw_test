@@ -34,19 +34,19 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.95
-CONVERGENCE_ITERATIONS = 40
+GAMMA_VALUE = 0.80
+CONVERGENCE_ITERATIONS = 50
 
 #reward values
 WALL_REWARD = 0
-FOOD_REWARD = 8
-GHOST_REWARD = -22
+FOOD_REWARD = 10
+GHOST_REWARD = -18
 VULNERABLE_GHOST_REWARD = 6
 EMPTY_REWARD = -1
 CAPSULES_REWARD = 4
 
-DISTANCE_MULTIPLIER = 2 #2.2
-GHOST_RADIUS = 3.5 #2.1
+DISTANCE_MULTIPLIER = 2.2 #2.2
+GHOST_RADIUS = 2.1 #2.1
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = api.nonDeterministic
 NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
@@ -128,7 +128,10 @@ class MDPAgent(Agent):
     # This is what gets run in between multiple games
     def final(self, state):
         global NO_OF_RUNS 
+        global FOOD_REWARD
         NO_OF_RUNS += 1
+        # if NO_OF_RUNS % 25 == 0:
+        #     FOOD_REWARD += 1
         print "Looks like the game just ended!"
         print "This was run number: " + str(NO_OF_RUNS)
  
@@ -143,8 +146,7 @@ class MDPAgent(Agent):
         for capsule in capsules:
             self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
 
-        for food in foods:
-            self.game_state[food[0]][food[1]].reward = FOOD_REWARD
+        self.setFoodReward(state, foods)
 
         for area in close_to_ghost[0]:
             if((area[0], area[1]) not in walls):
@@ -170,7 +172,16 @@ class MDPAgent(Agent):
         #     for col in range(self.map_x):
         #         row_values.append(self.game_state[col][row].reward)
         #     print(row_values)
-     
+    def setFoodReward(self, state, foods):
+        walls = api.walls(state)
+        nearby_walls = []
+        for food in foods:
+            for i in range(len(walls)):
+                if util.manhattanDistance(food,walls[i]) <= 1:
+                    nearby_walls.append(walls[i])
+
+                self.game_state[food[0]][food[1]].reward = FOOD_REWARD / (1 + len(nearby_walls))
+    
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
         self.map_x = self.getLayoutWidth(corners)
