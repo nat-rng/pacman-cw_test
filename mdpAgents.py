@@ -59,7 +59,7 @@ class Coordinates():
     def __init__(self, wall_bool, reward, policy=Directions.STOP, utility=0.0):
         self.wall_bool = wall_bool
         self.reward = reward
-        self.policy = policy
+        self.transition_policy = policy
         self.utility = utility
    
 class MDPAgent(Agent):
@@ -128,8 +128,7 @@ class MDPAgent(Agent):
         print "Looks like the game just ended!"
  
     #update the map with new values of rewards and symbols
-    def updateRewards(self, state):
-        #generate imp lists     
+    def updateRewards(self, state):     
         walls = api.walls(state)
         ghost_edible = api.ghostStates(state)
         capsules = api.capsules(state)
@@ -153,18 +152,12 @@ class MDPAgent(Agent):
                     manhatten_distance = close_to_ghost[1][index]
                     if len(ghost_edible) < 2:
                         self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
-                    elif ghost_edible[0][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
-                    elif ghost_edible[1][1] == 1:
-                        self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
-                    else:
-                        self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
-                    
-        # for row in range(self.map_y):
-        #     row_values = []
-        #     for col in range(self.map_x):
-        #         row_values.append(self.game_state[col][row].reward)
-        #     print(row_values)
+
+                    for i in range(len(ghost_edible)):
+                        if ghost_edible[i][1] == 1:
+                            self.game_state[col][row].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
+                        else:
+                            self.game_state[col][row].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
      
     def ghostRadius(self, state, limit):
         corners = api.corners(state)
@@ -184,7 +177,7 @@ class MDPAgent(Agent):
         return dual_list
  
     #method for calculating updating all the utilities and policies in self.game_state        
-    def calculateUtilitiesAndPolicies(self, state):
+    def updateUtilitiesAndTransitions(self, state):
         #list to choose a move from based on calculation from the method updatePolicy
         directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
         
@@ -226,17 +219,17 @@ class MDPAgent(Agent):
         new_policy_index = self.findMaxIndex(expected_utilities)
         
         #update policy in self.game_state 
-        self.game_state[col][row].policy = directions_list[new_policy_index]
+        self.game_state[col][row].transition_policy = directions_list[new_policy_index]
  
     #calculate and set utilities accoring to current policy in self.game_state
     def getNewUtility(self, col, row):
-        if (self.game_state[col][row].policy == Directions.NORTH):
+        if (self.game_state[col][row].transition_policy == Directions.NORTH):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row])
-        elif (self.game_state[col][row].policy == Directions.SOUTH):
+        elif (self.game_state[col][row].transition_policy == Directions.SOUTH):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col-1][row], self.game_state[col+1][row])
-        elif (self.game_state[col][row].policy == Directions.EAST):
+        elif (self.game_state[col][row].transition_policy == Directions.EAST):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row-1], self.game_state[col][row+1])
-        elif (self.game_state[col][row].policy == Directions.WEST):
+        elif (self.game_state[col][row].transition_policy == Directions.WEST):
             return self.calculateUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1])
         else:
             return self.calculateUtility(self.game_state[col][row], self.game_state[col][row], self.game_state[col][row], self.game_state[col][row])
@@ -279,7 +272,7 @@ class MDPAgent(Agent):
         self.updateRewards(state)
         
         #calculate new utilities and policies and save in self.game_state
-        self.calculateUtilitiesAndPolicies(state)
+        self.updateUtilitiesAndTransitions(state)
 
         #get all legal actions at current pacman pos
         legal = api.legalActions(state)
@@ -288,7 +281,7 @@ class MDPAgent(Agent):
         pacman_pos = api.whereAmI(state)
         
         #get the policy saved on pacmans current pos
-        move_to_make = self.game_state[pacman_pos[0]][pacman_pos[1]].policy
+        move_to_make = self.game_state[pacman_pos[0]][pacman_pos[1]].transition_policy
 
         #make move
         return api.makeMove(move_to_make, legal)
