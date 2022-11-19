@@ -34,17 +34,17 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.85
-CONVERGENCE_ITERATIONS = 40
+GAMMA_VALUE = 0.90
+CONVERGENCE_ITERATIONS = 50
 
 #reward values
-FOOD_REWARD = 18
-GHOST_REWARD = -30
-VULNERABLE_GHOST_REWARD = 30
-EMPTY_REWARD = -2
-CAPSULES_REWARD = 10
+FOOD_REWARD = 15
+GHOST_REWARD = -20
+VULNERABLE_GHOST_REWARD = 12
+EMPTY_REWARD = -0.15
+CAPSULES_REWARD = 12
 
-GHOST_RADIUS = 8 #2.1
+GHOST_RADIUS = 3.2 #2.1
 #nondeterministic probabilities
 DETERMINISTIC_ACTION = 0.8
 NON_DETERMINISTIC_ACTION = 0.1
@@ -163,7 +163,7 @@ class MDPAgent(Agent):
                 manhatten_distance = self.close_to_ghost[1][index]
                 for i in range(len(self.ghost_edible)):
                     if self.ghost_edible[i][1] > 0:
-                        self.game_state[area[0]][area[1]].reward += self.ghost_edible[i][1]*VULNERABLE_GHOST_REWARD - GHOST_RADIUS*manhatten_distance
+                        self.game_state[area[0]][area[1]].reward += self.ghost_edible[i][1]*VULNERABLE_GHOST_REWARD - (GHOST_RADIUS**0.3)*manhatten_distance
                     else:
                         self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.5)*manhatten_distance
 
