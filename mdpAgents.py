@@ -34,22 +34,20 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.80
-CONVERGENCE_ITERATIONS = 50
+GAMMA_VALUE = 0.85
+CONVERGENCE_ITERATIONS = 40
 
 #reward values
-WALL_REWARD = 0
-FOOD_REWARD = 10
-GHOST_REWARD = -18
-VULNERABLE_GHOST_REWARD = 6
-EMPTY_REWARD = -1
-CAPSULES_REWARD = 4
+FOOD_REWARD = 18
+GHOST_REWARD = -30
+VULNERABLE_GHOST_REWARD = 30
+EMPTY_REWARD = -2
+CAPSULES_REWARD = 10
 
-DISTANCE_MULTIPLIER = 2.2 #2.2
-GHOST_RADIUS = 2.1 #2.1
+GHOST_RADIUS = 8 #2.1
 #nondeterministic probabilities
-DETERMINISTIC_ACTION = api.nonDeterministic
-NON_DETERMINISTIC_ACTION = (1-DETERMINISTIC_ACTION)/2
+DETERMINISTIC_ACTION = 0.8
+NON_DETERMINISTIC_ACTION = 0.1
 NO_OF_RUNS = 0
 
 
@@ -57,10 +55,10 @@ class Coordinates():
     '''
     Sets atrtibutes for point on the map if it is a wall, reward, policy and utility
     '''
-    def __init__(self, wall_bool, reward, policy=Directions.STOP, utility=0.0):
+    def __init__(self, wall_bool, reward, transition_policy=Directions.STOP, utility=0.0):
         self.wall_bool = wall_bool
         self.reward = reward
-        self.transition_policy = policy
+        self.transition_policy = transition_policy
         self.utility = utility
    
 class MDPAgent(Agent):
@@ -81,7 +79,7 @@ class MDPAgent(Agent):
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
 
-        #Code was modified from the provided mapAgents.py file from PRactical 5    
+        #Code was modified from the provided mapAgents.py file from Practical 5    
         #create placeholder game_state (a matrix with empty space coordinantes)
         self.game_state = [[Coordinates(False, EMPTY_REWARD) for _ in range(self.map_y)] for _ in range(self.map_x)] 
 
@@ -106,14 +104,14 @@ class MDPAgent(Agent):
   
     def initializeMapStates(self, state):
         #generate imp lists     
-        walls = api.walls(state)
+        self.walls = api.walls(state)
+        self.grid = [(i,j) for i in range(self.map_x) for j in range(self.map_y)] 
         ghosts = api.ghosts(state)
         capsules = api.capsules(state)
         foods = api.food(state)
-        
         #initialize 2d array with arbitrary values of MapCoordinate class
-        for wall in walls:
-            self.game_state[wall[0]][wall[1]] = Coordinates(True, WALL_REWARD)
+        for wall in self.walls:
+            self.game_state[wall[0]][wall[1]] = Coordinates(True, None)
 
         for capsule in capsules:
             self.game_state[capsule[0]][capsule[1]] = Coordinates(False, CAPSULES_REWARD)
@@ -128,166 +126,150 @@ class MDPAgent(Agent):
     # This is what gets run in between multiple games
     def final(self, state):
         global NO_OF_RUNS 
-        global FOOD_REWARD
+        global GHOST_RADIUS
         NO_OF_RUNS += 1
         # if NO_OF_RUNS % 25 == 0:
-        #     FOOD_REWARD += 1
+        #     initial_radius = GHOST_RADIUS
+        #     GHOST_RADIUS += 1
+        #     print "GHOST_RADIUS increased from {} to {}".format(initial_radius, GHOST_RADIUS)
         print "Looks like the game just ended!"
         print "This was run number: " + str(NO_OF_RUNS)
  
     #update the map with new values of rewards and symbols
-    def updateRewards(self, state):     
-        walls = api.walls(state)
-        ghost_edible = api.ghostStates(state)
-        capsules = api.capsules(state)
-        foods = api.food(state)
-        close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
+    def updateRewards(self, state):    
+        self.ghost_edible = api.ghostStatesWithTimes(state)
+        self.capsules = api.capsules(state)
+        self.foods = api.food(state)
+        self.close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
 
-        for capsule in capsules:
+        for coord in self.grid:
+            if coord not in self.walls:
+                self.game_state[coord[0]][coord[1]].reward = EMPTY_REWARD
+
+        for capsule in self.capsules:
             self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
 
-        self.setFoodReward(state, foods)
+        for food in self.foods:
+            num_walls = len({(food[0]+1, food[1]), (food[0]-1, food[1]), (food[0], food[1]+1), (food[0], food[1]-1)}.difference(self.walls))
+            if len(self.foods) == 1:
+                self.game_state[food[0]][food[1]].reward = FOOD_REWARD**num_walls
+            else:
+                self.game_state[food[0]][food[1]].reward = FOOD_REWARD * (1.2**-num_walls)
 
-        for area in close_to_ghost[0]:
-            if((area[0], area[1]) not in walls):
-                index = close_to_ghost[0].index((area[0], area[1]))
-                manhatten_distance = close_to_ghost[1][index]
-                if len(ghost_edible) < 2:
-                    self.game_state[area[0]][area[1]].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
-
-                for i in range(len(ghost_edible)):
-                    if ghost_edible[i][1] == 1:
-                        self.game_state[area[0]][area[1]].reward = VULNERABLE_GHOST_REWARD - DISTANCE_MULTIPLIER*manhatten_distance
+        for area in self.close_to_ghost[0]:
+            excluded_coords = [self.walls + self.capsules]
+            if((area[0], area[1]) not in set().union(*excluded_coords)):
+                index = self.close_to_ghost[0].index((area[0], area[1]))
+                manhatten_distance = self.close_to_ghost[1][index]
+                for i in range(len(self.ghost_edible)):
+                    if self.ghost_edible[i][1] > 0:
+                        self.game_state[area[0]][area[1]].reward += self.ghost_edible[i][1]*VULNERABLE_GHOST_REWARD - GHOST_RADIUS*manhatten_distance
                     else:
-                        self.game_state[area[0]][area[1]].reward = GHOST_REWARD + DISTANCE_MULTIPLIER*manhatten_distance
-        
-        for row in range(self.map_y):
-            for col in range(self.map_x):
-                excluded_coords = [walls + capsules + foods + close_to_ghost[0]]
-                if (col, row) not in set().union(*excluded_coords):
-                    self.game_state[col][row].reward = EMPTY_REWARD
+                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.5)*manhatten_distance
 
         # for row in range(self.map_y):
         #     row_values = []
         #     for col in range(self.map_x):
         #         row_values.append(self.game_state[col][row].reward)
         #     print(row_values)
-    def setFoodReward(self, state, foods):
-        walls = api.walls(state)
-        nearby_walls = []
-        for food in foods:
-            for i in range(len(walls)):
-                if util.manhattanDistance(food,walls[i]) <= 1:
-                    nearby_walls.append(walls[i])
+        # print ' _ '*2*self.map_x
 
-                self.game_state[food[0]][food[1]].reward = FOOD_REWARD / (1 + len(nearby_walls))
     
     def ghostRadius(self, state, limit):
-        corners = api.corners(state)
-        self.map_x = self.getLayoutWidth(corners)
-        self.map_y = self.getLayoutHeight(corners)
-        grid = [(i,j) for i in range(self.map_x) for j in range(self.map_y)]
         ghosts = api.ghosts(state)
         withinLimit = set()
         
         for ghost in ghosts:
-            for i in range(len(grid)):
-                manhattanDistance = util.manhattanDistance(ghost,grid[i])
+            for i in range(len(self.grid)):
+                manhattanDistance = util.manhattanDistance(ghost,self.grid[i])
                 if manhattanDistance <= limit:
-                    withinLimit.add((grid[i],manhattanDistance))
+                    withinLimit.add((self.grid[i],manhattanDistance))
 
         dual_list = list(map(list, zip(*withinLimit)))
         return dual_list
  
     #method for calculating updating all the utilities and policies in self.game_state        
     def updateUtilitiesAndTransitions(self, state):
-        #list to choose a move from based on calculation from the method updatePolicy
-        directions_list = [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST, Directions.STOP]
-        
-        #make copy of utilites
-        converging_utilities = [[0.0 for _ in range(self.map_y)] for _ in range(self.map_x)] 
+        #create copy of game state and iniitialize utilities with arbitrary values (i.e. 0.0) 
+        converging_states = self.game_state
+        for row in range(self.map_y):
+            for col in range(self.map_x):
+                converging_states[col][row].utility = 0.0
 
-        #loop till near convergence 
+        #loop until utility values converge
         for _ in range(CONVERGENCE_ITERATIONS):
-            
             #calculate new utilities and save in temporary 2d array
+            # terminal_states = []#api.ghosts(state)
+            # if len(api.food(state)) == 1:
+            #     terminal_states = terminal_states + self.foods
             for row in range(self.map_y):
                 for col in range(self.map_x):
                     #if current pos not a wall, calculate new utility of pos
-                    if (not (self.game_state[col][row].wall_bool == True)):    
-                        converging_utilities[col][row] = self.getNewUtility(col, row)
-            
-            #copy calculated utilities to game_state
-            for row in range(self.map_y):
-                for col in range(self.map_x):
-                    self.game_state[col][row].utility = converging_utilities[col][row]
+                    if (self.game_state[col][row].wall_bool == False):# and (col,row) not in terminal_states):
+                        expected_utility = self.getMaxUtility(converging_states, col, row)
+                        converging_states[col][row].utility = converging_states[col][row].reward + GAMMA_VALUE * expected_utility
+                
+                #copy over converging_states utitities to game_state
+                self.game_state[col][row].utility = converging_states[col][row].utility
+                
+        pacman_pos = api.whereAmI(state)
+        self.game_state[pacman_pos[0]][pacman_pos[1]].transition_policy = self.getPolicy(pacman_pos)
+                    
+        # map_view = []
+        # for row in range(self.map_y):
+        #     row_values = []
+        #     for col in range(self.map_x):
+        #         row_values.append(self.game_state[col][row].utility)
+        #     map_view.append(row_values)
+        # print(api.whereAmI(state))
+        # print(self.game_state[api.whereAmI(state)[0]][api.whereAmI(state)[1]].transition_policy)
+        # for item in map_view[::-1]:
+        #     print(item)
+        # print ' _ '*2*self.map_x
 
-        #update policies in actual map i.e. game_state
-        for row in range(self.map_y):
-           for col in range(self.map_x):
-               #if current pos not a wall, update policy of pos
-               if (not (self.game_state[col][row].wall_bool == True)):        
-                   self.updatePolicy(col, row, directions_list)           
- 
-    #method to update policy in self.game_state
-    def updatePolicy(self, col, row, directions_list):
-        #calculate new policy to be used in the next iteration for self.game_state
+    def getPolicy(self, pacman_pos):
+        expected_utilities = [(self.game_state[pacman_pos[0]][pacman_pos[1]+1].utility, Directions.NORTH),
+                              (self.game_state[pacman_pos[0]][pacman_pos[1]-1].utility, Directions.SOUTH),
+                              (self.game_state[pacman_pos[0]+1][pacman_pos[1]].utility, Directions.EAST),
+                              (self.game_state[pacman_pos[0]-1][pacman_pos[1]].utility, Directions.WEST)]
+        pacman_surrounding = [(pacman_pos[0], pacman_pos[1]+1), (pacman_pos[0], pacman_pos[1]-1), 
+                              (pacman_pos[0]+1, pacman_pos[1]), (pacman_pos[0]-1, pacman_pos[1])]
+        wall_index = ()
+        # print expected_utilities
+        # print pacman_surrounding
+        for direction in pacman_surrounding:
+            if direction in self.walls:
+                wall_index += (pacman_surrounding.index(direction),)
+        expected_utilities = [expected_utilities[i] for i in range(len(expected_utilities)) if i not in wall_index]
+        # print wall_index
+        # print expected_utilities
+        expected_utilities = list(zip(*expected_utilities))
+        # print expected_utilities[0]
+        max_policy_index = expected_utilities[0].index(max(expected_utilities[0]))
+        max_policy = expected_utilities[1][max_policy_index]
+        return max_policy
+    
+    def getMaxUtility(self, game_state, col, row):  
         expected_utilities = []
-        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col+1][row], self.game_state[col-1][row]))
-        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row+1], self.game_state[col][row-1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1]))
-        expected_utilities.append(self.calculateExpectedUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row], self.game_state[col][row]))
-        #find index of max in list
-        new_policy_index = self.findMaxIndex(expected_utilities)
+        expected_utilities.append(self.calculateExpUtility(game_state[col][row], game_state[col][row+1], game_state[col-1][row], game_state[col+1][row]))
+        expected_utilities.append(self.calculateExpUtility(game_state[col][row], game_state[col][row-1], game_state[col+1][row], game_state[col-1][row]))
+        expected_utilities.append(self.calculateExpUtility(game_state[col][row], game_state[col+1][row], game_state[col][row+1], game_state[col][row-1]))
+        expected_utilities.append(self.calculateExpUtility(game_state[col][row], game_state[col-1][row], game_state[col][row-1], game_state[col][row+1]))
+        #find index of max in lis
         
-        #update policy in self.game_state 
-        self.game_state[col][row].transition_policy = directions_list[new_policy_index]
- 
-    #calculate and set utilities accoring to current policy in self.game_state
-    def getNewUtility(self, col, row):
-        if (self.game_state[col][row].transition_policy == Directions.NORTH):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row+1], self.game_state[col-1][row], self.game_state[col+1][row])
-        elif (self.game_state[col][row].transition_policy == Directions.SOUTH):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row-1], self.game_state[col-1][row], self.game_state[col+1][row])
-        elif (self.game_state[col][row].transition_policy == Directions.EAST):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col+1][row], self.game_state[col][row-1], self.game_state[col][row+1])
-        elif (self.game_state[col][row].transition_policy == Directions.WEST):
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col-1][row], self.game_state[col][row-1], self.game_state[col][row+1])
-        else:
-            return self.calculateUtility(self.game_state[col][row], self.game_state[col][row], self.game_state[col][row], self.game_state[col][row])
- 
-    #method to calculate maximum index of list
-    def findMaxIndex(self, list):
-        return list.index(max(list))
- 
-    #method to calculate utility of moving from state s to moving to s'
-    def calculateUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
-        if intended_move.wall_bool == True:
-            intended_move = current_pos
-
-        if alt_move_one.wall_bool == True:
-            alt_move_one = current_pos
-
-        if alt_move_two.wall_bool == True:
-            alt_move_two = current_pos
-
-        utility = current_pos.reward + GAMMA_VALUE * (DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + 
-                                                        (NON_DETERMINISTIC_ACTION)*alt_move_two.utility)
-        return utility
- 
-    #method for calculating expected utility of moving from state s to s'
-    def calculateExpectedUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
-        if intended_move.wall_bool == True:
-            intended_move = current_pos
-
-        if alt_move_one.wall_bool == True:
-            alt_move_one = current_pos
-
-        if alt_move_two.wall_bool == True:
-            alt_move_two = current_pos
+        max_utility = max(expected_utilities)
+            
+        return max_utility
+        
+    #method to calculate utility of moving from state s to s'
+    def calculateExpUtility(self, current_pos, intended_move, alt_move_one, alt_move_two):
+        wall_move = [m for m in [intended_move, alt_move_one, alt_move_two] if m.wall_bool == True]
+        if wall_move:
+            for move in wall_move:
+                move = current_pos
 
         exp_utility = DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + (NON_DETERMINISTIC_ACTION)*alt_move_two.utility
+        
         return exp_utility
  
     def getAction(self, state):
