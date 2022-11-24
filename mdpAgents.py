@@ -39,9 +39,9 @@ CONVERGENCE_ITERATIONS = 50
 SMALL_MAP = 49
 
 #reward values
-FOOD_REWARD = 15
-GHOST_REWARD = -20
-VULNERABLE_GHOST_REWARD = 12
+FOOD_REWARD = 30
+GHOST_REWARD = -30
+VULNERABLE_GHOST_REWARD = 5
 EMPTY_REWARD = -0.05
 CAPSULES_REWARD = 10
 
@@ -85,11 +85,11 @@ class MDPAgent(Agent):
         global GAMMA_VALUE
         
         if self.map_size > SMALL_MAP: 
-            GHOST_RADIUS = 4
+            GHOST_RADIUS = 5
             GAMMA_VALUE = 0.9
         else:
-            GHOST_RADIUS = 2
-            GAMMA_VALUE = 0.7
+            GHOST_RADIUS = 3
+            GAMMA_VALUE = 0.3
 
         #Code was modified from the provided mapAgents.py file from Practical 5    
         #create placeholder game_state (a matrix with empty space coordinantes)
@@ -159,11 +159,10 @@ class MDPAgent(Agent):
                 self.game_state[coord[0]][coord[1]].reward = EMPTY_REWARD
         if self.map_size > SMALL_MAP:
             if self.map_x % 2 == 0 and self.map_y % 2 != 0:
-                center_coords = [((self.map_x / 2) - 2, ((self.map_y + 1) / 2) - 1),
+                self.center_coords = [((self.map_x / 2) - 2, ((self.map_y + 1) / 2) - 1),
                                  ((self.map_x / 2) - 1, ((self.map_y + 1) / 2) - 1),
-                                 ((self.map_x / 2), ((self.map_y + 1) / 2) - 1)]
-                for coord in center_coords:
-                    self.game_state[coord[0]][coord[1]].reward = -1000
+                                 ((self.map_x / 2), ((self.map_y + 1) / 2) - 1),
+                                 ((self.map_x / 2) + 1, ((self.map_y + 1) / 2) - 1)]
 
         for capsule in self.capsules:
             self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
@@ -181,10 +180,10 @@ class MDPAgent(Agent):
                 index = self.close_to_ghost[0].index((area[0], area[1]))
                 manhatten_distance = self.close_to_ghost[1][index]
                 for i in range(len(self.ghost_edible)):
-                    if self.ghost_edible[i][1] > 0:
-                        self.game_state[area[0]][area[1]].reward += (self.ghost_edible[i][1]/6)*VULNERABLE_GHOST_REWARD - (GHOST_RADIUS**0.7)*manhatten_distance
+                    if self.ghost_edible[i][1] > 3:
+                        self.game_state[area[0]][area[1]].reward += VULNERABLE_GHOST_REWARD + (self.ghost_edible[i][1])*manhatten_distance
                     else:
-                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.7)*manhatten_distance
+                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.8)*manhatten_distance
 
         # for row in range(self.map_y):
         #     row_values = []
@@ -217,14 +216,14 @@ class MDPAgent(Agent):
 
         #loop until utility values converge
         for _ in range(CONVERGENCE_ITERATIONS):
-            #calculate new utilities and save in temporary 2d array
-            # terminal_states = []#api.ghosts(state)
-            # if len(api.food(state)) == 1:
-            #     terminal_states = terminal_states + self.foods
+            # calculate new utilities and save in temporary 2d array
+            terminal_states = self.center_coords
+            if len(api.food(state)) == 1:
+                terminal_states = terminal_states + self.foods
             for row in range(self.map_y):
                 for col in range(self.map_x):
                     #if current pos not a wall, calculate new utility of pos
-                    if (self.game_state[col][row].wall_bool == False):# and (col,row) not in terminal_states):
+                    if (self.game_state[col][row].wall_bool == False and (col,row) not in terminal_states):
                         expected_utility = self.getMaxUtility(converging_states, col, row)
                         converging_states[col][row].utility = converging_states[col][row].reward + GAMMA_VALUE * expected_utility
                 
@@ -238,7 +237,7 @@ class MDPAgent(Agent):
         # for row in range(self.map_y):
         #     row_values = []
         #     for col in range(self.map_x):
-        #         row_values.append(self.game_state[col][row].reward)
+        #         row_values.append(self.game_state[col][row].utility)
         #     map_view.append(row_values)
         # print(api.whereAmI(state))
         # print(self.game_state[api.whereAmI(state)[0]][api.whereAmI(state)[1]].transition_policy)
