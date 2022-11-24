@@ -34,20 +34,20 @@ import random
 import game
 import util
 
-GAMMA_VALUE = 0.90
 CONVERGENCE_ITERATIONS = 50
+
+SMALL_MAP = 49
 
 #reward values
 FOOD_REWARD = 15
 GHOST_REWARD = -20
 VULNERABLE_GHOST_REWARD = 12
-EMPTY_REWARD = -0.15
-CAPSULES_REWARD = 12
+EMPTY_REWARD = -0.05
+CAPSULES_REWARD = 10
 
-GHOST_RADIUS = 3.2 #2.1
 #nondeterministic probabilities
-DETERMINISTIC_ACTION = 0.8
-NON_DETERMINISTIC_ACTION = 0.1
+INTENDED_ACTION = 0.8
+ALTERNATE_ACTION = 0.1
 NO_OF_RUNS = 0
 
 
@@ -78,6 +78,18 @@ class MDPAgent(Agent):
         #find map_x and map_y
         self.map_x = self.getLayoutWidth(corners)
         self.map_y = self.getLayoutHeight(corners)
+        
+        self.map_size = self.map_x * self.map_y
+        
+        global GHOST_RADIUS
+        global GAMMA_VALUE
+        
+        if self.map_size > SMALL_MAP: 
+            GHOST_RADIUS = 4
+            GAMMA_VALUE = 0.9
+        else:
+            GHOST_RADIUS = 2
+            GAMMA_VALUE = 0.7
 
         #Code was modified from the provided mapAgents.py file from Practical 5    
         #create placeholder game_state (a matrix with empty space coordinantes)
@@ -141,10 +153,17 @@ class MDPAgent(Agent):
         self.capsules = api.capsules(state)
         self.foods = api.food(state)
         self.close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
-
+        
         for coord in self.grid:
             if coord not in self.walls:
                 self.game_state[coord[0]][coord[1]].reward = EMPTY_REWARD
+        if self.map_size > SMALL_MAP:
+            if self.map_x % 2 == 0 and self.map_y % 2 != 0:
+                center_coords = [((self.map_x / 2) - 2, ((self.map_y + 1) / 2) - 1),
+                                 ((self.map_x / 2) - 1, ((self.map_y + 1) / 2) - 1),
+                                 ((self.map_x / 2), ((self.map_y + 1) / 2) - 1)]
+                for coord in center_coords:
+                    self.game_state[coord[0]][coord[1]].reward = -1000
 
         for capsule in self.capsules:
             self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
@@ -163,9 +182,9 @@ class MDPAgent(Agent):
                 manhatten_distance = self.close_to_ghost[1][index]
                 for i in range(len(self.ghost_edible)):
                     if self.ghost_edible[i][1] > 0:
-                        self.game_state[area[0]][area[1]].reward += self.ghost_edible[i][1]*VULNERABLE_GHOST_REWARD - (GHOST_RADIUS**0.3)*manhatten_distance
+                        self.game_state[area[0]][area[1]].reward += (self.ghost_edible[i][1]/6)*VULNERABLE_GHOST_REWARD - (GHOST_RADIUS**0.7)*manhatten_distance
                     else:
-                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.5)*manhatten_distance
+                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.7)*manhatten_distance
 
         # for row in range(self.map_y):
         #     row_values = []
@@ -219,7 +238,7 @@ class MDPAgent(Agent):
         # for row in range(self.map_y):
         #     row_values = []
         #     for col in range(self.map_x):
-        #         row_values.append(self.game_state[col][row].utility)
+        #         row_values.append(self.game_state[col][row].reward)
         #     map_view.append(row_values)
         # print(api.whereAmI(state))
         # print(self.game_state[api.whereAmI(state)[0]][api.whereAmI(state)[1]].transition_policy)
@@ -268,7 +287,7 @@ class MDPAgent(Agent):
             for move in wall_move:
                 move = current_pos
 
-        exp_utility = DETERMINISTIC_ACTION*intended_move.utility + (NON_DETERMINISTIC_ACTION)*alt_move_one.utility + (NON_DETERMINISTIC_ACTION)*alt_move_two.utility
+        exp_utility = INTENDED_ACTION*intended_move.utility + ALTERNATE_ACTION*alt_move_one.utility + ALTERNATE_ACTION*alt_move_two.utility
         
         return exp_utility
  
