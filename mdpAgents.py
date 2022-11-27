@@ -34,21 +34,13 @@ import random
 import game
 import util
 
-CONVERGENCE_ITERATIONS = 50
-
+# Size of small map (width*height)
 SMALL_MAP = 49
-
-#reward values
-FOOD_REWARD = 30
-GHOST_REWARD = -30
-VULNERABLE_GHOST_REWARD = 5
-EMPTY_REWARD = -0.05
-CAPSULES_REWARD = 10
+NO_OF_RUNS = 0
 
 #nondeterministic probabilities
 INTENDED_ACTION = 0.8
 ALTERNATE_ACTION = 0.1
-NO_OF_RUNS = 0
 
 
 class Coordinates():
@@ -81,15 +73,30 @@ class MDPAgent(Agent):
         
         self.map_size = self.map_x * self.map_y
         
-        global GHOST_RADIUS
+        global LOOKAHEAD_LIMIT
         global GAMMA_VALUE
+        global FOOD_REWARD
+        global EMPTY_REWARD 
+        global GHOST_REWARD
+        global VULNERABLE_GHOST_REWARD
+        global CAPSULES_REWARD
         
         if self.map_size > SMALL_MAP: 
-            GHOST_RADIUS = 5
-            GAMMA_VALUE = 0.9
+            LOOKAHEAD_LIMIT = 4
+            GAMMA_VALUE = 0.95
+            FOOD_REWARD = 15
+            EMPTY_REWARD = -0.02
+            GHOST_REWARD = -20
+            VULNERABLE_GHOST_REWARD = 25
+            CAPSULES_REWARD = 5
         else:
-            GHOST_RADIUS = 3
-            GAMMA_VALUE = 0.3
+            LOOKAHEAD_LIMIT = 3
+            GAMMA_VALUE = 0.75 #0.75
+            FOOD_REWARD = 110 #110
+            EMPTY_REWARD = -0.05 #-0.05
+            GHOST_REWARD = -10 #-10
+            VULNERABLE_GHOST_REWARD = 0
+            CAPSULES_REWARD = 0
 
         #Code was modified from the provided mapAgents.py file from Practical 5    
         #create placeholder game_state (a matrix with empty space coordinantes)
@@ -113,7 +120,6 @@ class MDPAgent(Agent):
                 map_x = corners[i][0]
         return map_x + 1
 
-  
     def initializeMapStates(self, state):
         #generate imp lists     
         self.walls = api.walls(state)
@@ -134,11 +140,9 @@ class MDPAgent(Agent):
         for ghost in ghosts:
             self.game_state[ghost[0]][ghost[1]] = Coordinates(False, GHOST_REWARD)
 
- 
     # This is what gets run in between multiple games
     def final(self, state):
         global NO_OF_RUNS 
-        global GHOST_RADIUS
         NO_OF_RUNS += 1
         # if NO_OF_RUNS % 25 == 0:
         #     initial_radius = GHOST_RADIUS
@@ -149,75 +153,99 @@ class MDPAgent(Agent):
  
     #update the map with new values of rewards and symbols
     def updateRewards(self, state):    
-        self.ghost_edible = api.ghostStatesWithTimes(state)
+        self.ghost_locations = api.ghostStatesWithTimes(state)
         self.capsules = api.capsules(state)
         self.foods = api.food(state)
-        self.close_to_ghost = self.ghostRadius(state, GHOST_RADIUS)
-        
-        for coord in self.grid:
-            if coord not in self.walls:
-                self.game_state[coord[0]][coord[1]].reward = EMPTY_REWARD
+        self.accessible_to_ghosts = self.accessibleGhostFields(state)
+
         if self.map_size > SMALL_MAP:
             if self.map_x % 2 == 0 and self.map_y % 2 != 0:
-                self.center_coords = [((self.map_x / 2) - 2, ((self.map_y + 1) / 2) - 1),
-                                 ((self.map_x / 2) - 1, ((self.map_y + 1) / 2) - 1),
-                                 ((self.map_x / 2), ((self.map_y + 1) / 2) - 1),
-                                 ((self.map_x / 2) + 1, ((self.map_y + 1) / 2) - 1)]
+                self.ghost_home = [((self.map_x / 2) - 2, ((self.map_y + 1) / 2) - 1),
+                                      ((self.map_x / 2) - 1, ((self.map_y + 1) / 2) - 1),
+                                      ((self.map_x / 2), ((self.map_y + 1) / 2) - 1),
+                                      ((self.map_x / 2) - 1, ((self.map_y + 1) / 2)),
+                                      ((self.map_x / 2), ((self.map_y + 1) / 2)),
+                                      ((self.map_x / 2) + 1, ((self.map_y + 1) / 2) - 1)]
+        else:
+            self.ghost_home = []
+
+        for coord in self.grid:
+            if coord not in self.walls and coord not in self.foods:
+                self.game_state[int(coord[0])][int(coord[1])].reward = EMPTY_REWARD
 
         for capsule in self.capsules:
             self.game_state[capsule[0]][capsule[1]].reward = CAPSULES_REWARD
 
         for food in self.foods:
-            num_walls = len({(food[0]+1, food[1]), (food[0]-1, food[1]), (food[0], food[1]+1), (food[0], food[1]-1)}.difference(self.walls))
+            num_walls = len({(food[0]+1, food[1]), (food[0]-1, food[1]), (food[0], food[1]+1), (food[0], food[1]-1)}.intersection(self.walls))
             if len(self.foods) == 1:
-                self.game_state[food[0]][food[1]].reward = FOOD_REWARD**num_walls
+                self.game_state[food[0]][food[1]].reward = FOOD_REWARD**FOOD_REWARD
             else:
-                self.game_state[food[0]][food[1]].reward = FOOD_REWARD * (1.2**-num_walls)
+                self.game_state[food[0]][food[1]].reward = FOOD_REWARD / (1 + num_walls)
 
-        for area in self.close_to_ghost[0]:
-            excluded_coords = [self.walls + self.capsules]
-            if((area[0], area[1]) not in set().union(*excluded_coords)):
-                index = self.close_to_ghost[0].index((area[0], area[1]))
-                manhatten_distance = self.close_to_ghost[1][index]
-                for i in range(len(self.ghost_edible)):
-                    if self.ghost_edible[i][1] > 3:
-                        self.game_state[area[0]][area[1]].reward += VULNERABLE_GHOST_REWARD + (self.ghost_edible[i][1])*manhatten_distance
-                    else:
-                        self.game_state[area[0]][area[1]].reward += GHOST_REWARD + (GHOST_RADIUS**0.8)*manhatten_distance
+        vulnerable_ghosts = [self.ghost_locations[i][0] for i in range(len(self.ghost_locations)) if self.ghost_locations[i][1] > 0]
+        vulnerable_time = [self.ghost_locations[i][1] for i in range(len(self.ghost_locations)) if self.ghost_locations[i][1] > 0]
+        if vulnerable_time and vulnerable_time[0] > 2:
+            if len(vulnerable_ghosts) > 1:
+                for fields,i in zip(self.accessible_to_ghosts, range(len(self.accessible_to_ghosts))):
+                    for coord in fields:
+                        self.game_state[int(coord[0])][int(coord[1])].reward = ((vulnerable_time[0])+VULNERABLE_GHOST_REWARD) / (1 + i)
+            else:
+                vulnerable_ghost_fields = [vulnerable_ghosts]
+                duplicate_fields = set()
+                duplicate_fields.update(vulnerable_ghosts)
+                self.ghostLookAhead(state, vulnerable_ghost_fields, duplicate_fields, LOOKAHEAD_LIMIT)
 
-        # for row in range(self.map_y):
-        #     row_values = []
-        #     for col in range(self.map_x):
-        #         row_values.append(self.game_state[col][row].reward)
-        #     print(row_values)
-        # print ' _ '*2*self.map_x
+                for fields,i in zip(self.accessible_to_ghosts, range(len(self.accessible_to_ghosts))):
+                    for coord in fields:
+                        self.game_state[int(coord[0])][int(coord[1])].reward = GHOST_REWARD / (1 + i)
+                
+                for vuln_fields,i in zip(vulnerable_ghost_fields, range(len(vulnerable_ghost_fields))):
+                    for vuln_coord in vuln_fields:
+                        self.game_state[int(vuln_coord[0])][int(vuln_coord[1])].reward = ((vulnerable_time[0]**0.8)+VULNERABLE_GHOST_REWARD) / (1 + i)
+        else:
+            for fields,i in zip(self.accessible_to_ghosts, range(len(self.accessible_to_ghosts))):
+                for coord in fields:
+                    self.game_state[int(coord[0])][int(coord[1])].reward = GHOST_REWARD / (1 + i)
 
-    
-    def ghostRadius(self, state, limit):
+        for ghost_spawn in self.ghost_home:
+            self.game_state[ghost_spawn[0]][ghost_spawn[1]].reward = -1000
+
+    def accessibleGhostFields(self, state):
         ghosts = api.ghosts(state)
-        withinLimit = set()
-        
-        for ghost in ghosts:
-            for i in range(len(self.grid)):
-                manhattanDistance = util.manhattanDistance(ghost,self.grid[i])
-                if manhattanDistance <= limit:
-                    withinLimit.add((self.grid[i],manhattanDistance))
+        accessible_fields = [ghosts]
+        duplicate_fields = set()
+        duplicate_fields.update(ghosts)
+        self.ghostLookAhead(state, accessible_fields, duplicate_fields, LOOKAHEAD_LIMIT)
+        return accessible_fields
 
-        dual_list = list(map(list, zip(*withinLimit)))
-        return dual_list
+    def ghostLookAhead(self, state, accessible_fields, duplicates, limit):
+        index_locations = []
+        duplicate_fields = duplicates
+        for field in accessible_fields:
+            for i in range(len(field)):
+                ghost_moves = ((int(field[i][0])+1,int(field[i][1])), (int(field[i][0])-1,int(field[i][1])), (int(field[i][0]),int(field[i][1])+1), (int(field[i][0]),int(field[i][1])-1))
+                for move in ghost_moves:
+                    if move not in self.walls and move not in duplicate_fields:
+                        index_locations.append(move)
+                        duplicate_fields.add(move)
+        accessible_fields.append(index_locations)
+        if limit > 1:
+            return self.ghostLookAhead(state, accessible_fields, duplicate_fields, limit-1)
+        return accessible_fields
  
     #method for calculating updating all the utilities and policies in self.game_state        
     def updateUtilitiesAndTransitions(self, state):
         #create copy of game state and iniitialize utilities with arbitrary values (i.e. 0.0) 
         converging_states = self.game_state
-        for row in range(self.map_y):
-            for col in range(self.map_x):
-                converging_states[col][row].utility = 0.0
-
+        previous_utilities = [0.0 for _ in range(self.map_x) for _ in range(self.map_y)]
+        iterate = True
+        # iteration = 0
         #loop until utility values converge
-        for _ in range(CONVERGENCE_ITERATIONS):
+        while iterate == True:
+            new_utilities = []
             # calculate new utilities and save in temporary 2d array
-            terminal_states = self.center_coords
+            terminal_states = []
             if len(api.food(state)) == 1:
                 terminal_states = terminal_states + self.foods
             for row in range(self.map_y):
@@ -226,10 +254,18 @@ class MDPAgent(Agent):
                     if (self.game_state[col][row].wall_bool == False and (col,row) not in terminal_states):
                         expected_utility = self.getMaxUtility(converging_states, col, row)
                         converging_states[col][row].utility = converging_states[col][row].reward + GAMMA_VALUE * expected_utility
+                        new_utilities.append(converging_states[col][row].utility)
                 
                 #copy over converging_states utitities to game_state
                 self.game_state[col][row].utility = converging_states[col][row].utility
-                
+
+            convergence = [new==old for new,old in zip(new_utilities, previous_utilities)]
+            if sum(convergence)/len(convergence) == 1:
+                iterate = False
+                    
+            previous_utilities = new_utilities
+        #     iteration += 1
+        # print iteration
         pacman_pos = api.whereAmI(state)
         self.game_state[pacman_pos[0]][pacman_pos[1]].transition_policy = self.getPolicy(pacman_pos)
                     
@@ -239,8 +275,6 @@ class MDPAgent(Agent):
         #     for col in range(self.map_x):
         #         row_values.append(self.game_state[col][row].utility)
         #     map_view.append(row_values)
-        # print(api.whereAmI(state))
-        # print(self.game_state[api.whereAmI(state)[0]][api.whereAmI(state)[1]].transition_policy)
         # for item in map_view[::-1]:
         #     print(item)
         # print ' _ '*2*self.map_x
@@ -296,6 +330,8 @@ class MDPAgent(Agent):
         
         #calculate new utilities and policies and save in self.game_state
         self.updateUtilitiesAndTransitions(state)
+        
+        self.accessibleGhostFields(state)
 
         #get all legal actions at current pacman pos
         legal = api.legalActions(state)
