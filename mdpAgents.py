@@ -83,11 +83,11 @@ class MDPAgent(Agent):
         
         if self.map_size > SMALL_MAP: 
             LOOKAHEAD_LIMIT = 4
-            GAMMA_VALUE = 0.95
-            FOOD_REWARD = 15
+            GAMMA_VALUE = 0.90
+            FOOD_REWARD = 20 #20
             EMPTY_REWARD = -0.02
-            GHOST_REWARD = -20
-            VULNERABLE_GHOST_REWARD = 25
+            GHOST_REWARD = -45 #40
+            VULNERABLE_GHOST_REWARD = 30 #30
             CAPSULES_REWARD = 5
         else:
             LOOKAHEAD_LIMIT = 3
@@ -331,8 +331,6 @@ class MDPAgent(Agent):
         #calculate new utilities and policies and save in self.game_state
         self.updateUtilitiesAndTransitions(state)
         
-        self.accessibleGhostFields(state)
-
         #get all legal actions at current pacman pos
         legal = api.legalActions(state)
         
