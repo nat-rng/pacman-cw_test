@@ -82,19 +82,19 @@ class MDPAgent(Agent):
         global CAPSULES_REWARD
         
         if self.map_size > SMALL_MAP: 
-            LOOKAHEAD_LIMIT = 4
+            LOOKAHEAD_LIMIT = 4 #4
             GAMMA_VALUE = 0.90
             FOOD_REWARD = 20 #20
             EMPTY_REWARD = -0.02
             GHOST_REWARD = -45 #40
             VULNERABLE_GHOST_REWARD = 30 #30
-            CAPSULES_REWARD = 5
+            CAPSULES_REWARD = 5#5
         else:
-            LOOKAHEAD_LIMIT = 3
-            GAMMA_VALUE = 0.75 #0.75
-            FOOD_REWARD = 110 #110
+            LOOKAHEAD_LIMIT = 3 #3
+            GAMMA_VALUE = 0.50 #0.5
+            FOOD_REWARD = 80 #80
             EMPTY_REWARD = -0.05 #-0.05
-            GHOST_REWARD = -10 #-10
+            GHOST_REWARD = -5 #-5
             VULNERABLE_GHOST_REWARD = 0
             CAPSULES_REWARD = 0
 
@@ -206,7 +206,12 @@ class MDPAgent(Agent):
         else:
             for fields,i in zip(self.accessible_to_ghosts, range(len(self.accessible_to_ghosts))):
                 for coord in fields:
-                    self.game_state[int(coord[0])][int(coord[1])].reward = GHOST_REWARD / (1 + i)
+                    if coord in self.foods:
+                        self.game_state[int(coord[0])][int(coord[1])].reward = (FOOD_REWARD / (1 + num_walls)) + (GHOST_REWARD / (1 + i))
+                        # print self.game_state[int(coord[0])][int(coord[1])].reward, "FOOD_REWARD + (GHOST_REWARD / (1 + i))"
+                    else:
+                        self.game_state[int(coord[0])][int(coord[1])].reward = GHOST_REWARD / (1 + i)
+
 
         for ghost_spawn in self.ghost_home:
             self.game_state[ghost_spawn[0]][ghost_spawn[1]].reward = -1000
